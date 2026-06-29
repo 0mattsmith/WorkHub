@@ -30,6 +30,16 @@ contextBridge.exposeInMainWorld('workhub', {
   exportWorkspace:  () => ipcRenderer.invoke('workspace:export'),
   importWorkspace:  () => ipcRenderer.invoke('workspace:import'),
 
+  // ---- updates ----
+  getUpdateInfo:    () => ipcRenderer.invoke('updates:info'),
+  checkForUpdates:  () => ipcRenderer.invoke('updates:check'),
+  installUpdate:    () => ipcRenderer.invoke('updates:install'),
+  onUpdateStatus:   (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('updates:status', handler);
+    return () => ipcRenderer.removeListener('updates:status', handler);
+  },
+
   // ---- misc ----
   openExternal:     (url) => ipcRenderer.invoke('app:openExternal', url),
   setWindowTitle:   (title) => ipcRenderer.invoke('window:setTitle', title),

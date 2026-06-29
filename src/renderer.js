@@ -778,6 +778,7 @@ function openSettings() {
   $('smoothwallUrl').value = s.smoothwall.loginUrl || '';
   renderOfficeChecklist();
   renderListsManager();
+  refreshUpdateUI();
   $('settingsModal').hidden = false;
 }
 
@@ -797,6 +798,7 @@ async function saveSettings() {
       avatarColor: state.settings.profile ? state.settings.profile.avatarColor : null
     },
     launchAtStartup: $('startupToggle').checked,
+    updates: { autoCheck: $('autoUpdateToggle').checked },
     sidebar: {
       dock,
       compact: $('compactToggle').checked,
@@ -902,6 +904,15 @@ function wireEvents() {
   $('resetSitesBtn').addEventListener('click', resetSites);
   $('exportWsBtn').addEventListener('click', exportWorkspace);
   $('importWsBtn').addEventListener('click', importWorkspace);
+
+  $('checkUpdatesBtn').addEventListener('click', () => { setUpdateStatus('Checking for updates…'); api.checkForUpdates(); });
+  $('installUpdateBtn').addEventListener('click', () => api.installUpdate());
+  $('viewReleasesBtn').addEventListener('click', () => api.openExternal('https://github.com/0mattsmith/workhub/releases'));
+  $('autoUpdateToggle').addEventListener('change', () => {
+    if (!state.settings.updates) state.settings.updates = { autoCheck: true };
+    state.settings.updates.autoCheck = $('autoUpdateToggle').checked;
+  });
+  api.onUpdateStatus(handleUpdateStatus);
 
   document.querySelectorAll('#themeToggle button').forEach((b) => {
     b.addEventListener('click', () => {
@@ -1269,6 +1280,40 @@ function showToast(message) {
   toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
 }
 
+/* ---- Updates ---- */
+function setUpdateStatus(msg) { const e = $('updateStatus'); if (e) e.textContent = msg; }
+
+async function refreshUpdateUI() {
+  try {
+    const info = await api.getUpdateInfo();
+    const v = $('appVersion'); if (v) v.textContent = 'v' + info.version;
+    const tog = $('autoUpdateToggle');
+    if (tog) tog.checked = !(state.settings.updates && state.settings.updates.autoCheck === false);
+    const inst = $('installUpdateBtn'); if (inst) inst.hidden = true;
+    if (!info.packaged) setUpdateStatus('Dev mode — updates apply to the installed app.');
+    else if (!info.supported) setUpdateStatus("Auto-update isn't available in this build.");
+    else setUpdateStatus('Click to check for a newer version.');
+  } catch (e) { /* ignore */ }
+}
+
+function handleUpdateStatus(d) {
+  const inst = $('installUpdateBtn');
+  switch (d && d.state) {
+    case 'checking': setUpdateStatus('Checking for updates…'); break;
+    case 'available': setUpdateStatus('Update found' + (d.version ? ' (v' + d.version + ')' : '') + ' — downloading…'); break;
+    case 'progress': setUpdateStatus('Downloading… ' + (d.percent || 0) + '%'); break;
+    case 'downloaded':
+      setUpdateStatus('Update ready' + (d.version ? ' (v' + d.version + ')' : '') + '.');
+      if (inst) inst.hidden = false;
+      showToast('Update downloaded — restart to install');
+      break;
+    case 'none': setUpdateStatus("You're on the latest version."); break;
+    case 'dev': setUpdateStatus('Dev mode — updates apply to the installed app.'); break;
+    case 'unsupported': setUpdateStatus("Auto-update isn't available in this build."); break;
+    case 'error': setUpdateStatus('Update check failed: ' + (d.message || 'unknown')); break;
+  }
+}
+
 /* ---- Notifications ---- */
 const notifications = [];
 let notifUnread = 0;
@@ -1395,6 +1440,7 @@ async function boot() {
   if (!state.settings.scheme) state.settings.scheme = 'blue';
   if (!state.settings.font) state.settings.font = 'system';
   if (!state.settings.profile) state.settings.profile = { name: '', avatar: null, avatarColor: null };
+  if (!state.settings.updates) state.settings.updates = { autoCheck: true };
 
   setTheme(state.settings.theme);
   applySidebar();

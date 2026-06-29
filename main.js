@@ -9,6 +9,12 @@ const fs = require('fs');
 const { URL, pathToFileURL } = require('url');
 const tcp = require('net');   // Node TCP, for reachability probe
 
+// Optional auto-updater (only meaningful in the packaged app). Lazy + guarded
+// so the app still runs even if the dependency isn't installed (e.g. fresh dev
+// checkout before `npm install`).
+let autoUpdater = null;
+try { autoUpdater = require('electron-updater').autoUpdater; } catch (e) { autoUpdater = null; }
+
 // ---------------------------------------------------------------------------
 // Single instance lock — clicking the tray / relaunching focuses the one window
 // ---------------------------------------------------------------------------
@@ -32,6 +38,7 @@ const DEFAULT_CONFIG = {
     customLists: [],
     collapsed: {},
     launchAtStartup: false,
+    updates: { autoCheck: true },
     sidebar: {
       dock: 'left',                      // 'left' | 'right' | 'top' | 'bottom'
       size: 248,                         // px — width (left/right) or height (top/bottom)
@@ -380,6 +387,8 @@ function rebuildTrayMenu() {
     template.push({ label: 'Re-check status now', click: checkSmoothwallStatus });
     template.push({ type: 'separator' });
   }
+  template.push({ label: 'Check for updates…', click: () => { showMainWindow(); checkForUpdates(true); } });
+  template.push({ type: 'separator' });
   template.push({ label: 'Quit WorkHub', click: () => { isQuitting = true; app.quit(); } });
   tray.setContextMenu(Menu.buildFromTemplate(template));
 }
@@ -454,6 +463,36 @@ function applyLaunchAtStartup() {
 }
 
 // ---------------------------------------------------------------------------
+// Auto-update (GitHub Releases via electron-updater)
+// ---------------------------------------------------------------------------
+function sendUpdateStatus(state, extra) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('updates:status', Object.assign({ state }, extra || {}));
+  }
+}
+
+let updatesWired = false;
+function setupAutoUpdater() {
+  if (!autoUpdater || updatesWired) return;
+  updatesWired = true;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('checking-for-update', () => sendUpdateStatus('checking'));
+  autoUpdater.on('update-available', (info) => sendUpdateStatus('available', { version: info && info.version }));
+  autoUpdater.on('update-not-available', () => sendUpdateStatus('none'));
+  autoUpdater.on('download-progress', (p) => sendUpdateStatus('progress', { percent: Math.round((p && p.percent) || 0) }));
+  autoUpdater.on('update-downloaded', (info) => sendUpdateStatus('downloaded', { version: info && info.version }));
+  autoUpdater.on('error', (err) => sendUpdateStatus('error', { message: String((err && err.message) || err) }));
+}
+
+function checkForUpdates() {
+  if (!app.isPackaged) { sendUpdateStatus('dev'); return; }     // nothing to update in `npm start`
+  if (!autoUpdater) { sendUpdateStatus('unsupported'); return; }
+  setupAutoUpdater();
+  try { autoUpdater.checkForUpdates(); } catch (e) { sendUpdateStatus('error', { message: String(e) }); }
+}
+
+// ---------------------------------------------------------------------------
 // IPC API (renderer <-> main)
 // ---------------------------------------------------------------------------
 ipcMain.handle('config:get', () => config);
@@ -502,6 +541,13 @@ ipcMain.handle('window:setTitle', (_e, title) => {
 
 ipcMain.handle('app:webviewPreloadUrl', () => {
   return pathToFileURL(path.join(__dirname, 'src', 'webview-preload.js')).href;
+});
+
+ipcMain.handle('updates:info', () => ({ version: app.getVersion(), packaged: app.isPackaged, supported: !!autoUpdater }));
+ipcMain.handle('updates:check', () => { checkForUpdates(true); return true; });
+ipcMain.handle('updates:install', () => {
+  if (autoUpdater && app.isPackaged) { isQuitting = true; autoUpdater.quitAndInstall(); }
+  return true;
 });
 
 ipcMain.handle('workspace:export', async () => {
@@ -555,6 +601,10 @@ app.whenReady().then(() => {
   createTray();
   applyLaunchAtStartup();
   startStatusPolling();
+
+  if (autoUpdater && app.isPackaged && !(config.settings.updates && config.settings.updates.autoCheck === false)) {
+    setTimeout(() => checkForUpdates(false), 4000);
+  }
 
   try {
     powerMonitor.on('suspend', stopStatusPolling);
