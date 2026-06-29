@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <title>WorkHub</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app" data-dock="left">
+    <!-- ===================== Sidebar ===================== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark" id="brandMark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22">
+            <path d="M4 4.8a1.6 1.6 0 0 1 1.6-1.6h12.8A1.6 1.6 0 0 1 20 4.8v8.4L12 21l-8-7.8V4.8Z" fill="currentColor"/>
+            <circle cx="12" cy="10" r="3" fill="#fff"/>
+            <circle cx="12" cy="10" r="1.25" fill="currentColor"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name" id="brandName">WorkHub</span>
+          <span class="brand-sub">Your school apps</span>
+        </div>
+      </div>
+
+      <div class="tab-list" id="tabList" role="tablist" aria-label="Pinned apps"></div>
+
+      <button class="add-btn" id="addBtn" title="Add a site">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>Add site</span>
+      </button>
+
+      <div class="sidebar-footer">
+        <button class="ghost-btn" id="notifBtn" title="Notifications">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M10 20a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
+          <span>Notifications</span>
+          <span class="notif-badge" id="notifBadge" hidden>0</span>
+        </button>
+        <button class="ghost-btn" id="smoothwallBtn" title="Sign in to Smoothwall">
+          <span class="sw-dot" id="swDot" data-status="unknown"></span>
+          <span>Smoothwall</span>
+        </button>
+        <button class="ghost-btn" id="settingsBtn" title="Settings">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" stroke-width="1.6"/><path d="M19.4 13a7.8 7.8 0 0 0 0-2l2-1.5-2-3.5-2.4 1a7.6 7.6 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.5L4.6 11a7.8 7.8 0 0 0 0 2l-2 1.5 2 3.5 2.4-1c.5.4 1.1.7 1.7 1l.4 2.5h4l.4-2.5c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.5-2-1.5Z" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>
+          <span>Settings</span>
+        </button>
+      </div>
+
+      <!-- Drag to resize the sidebar (hidden in compact mode) -->
+      <div class="resize-handle" id="resizeHandle" title="Drag to resize"></div>
+    </aside>
+
+    <!-- ===================== Main content ===================== -->
+    <main class="content">
+      <!-- Navigation bar -->
+      <div class="navbar" id="navbar" hidden>
+        <div class="nav-controls">
+          <button class="nav-icon" id="backBtn" title="Back" disabled>
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="nav-icon" id="fwdBtn" title="Forward" disabled>
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="nav-icon" id="reloadBtn" title="Reload">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M20 11A8 8 0 1 0 18 16M20 5v6h-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="nav-icon" id="homeBtn" title="Reset to default site">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 11l8-7 8 7M6 10v9h12v-9" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="url-bar" id="urlBar"><span id="urlText">about:blank</span></div>
+        <button class="nav-icon" id="openExternalBtn" title="Open in system browser">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M14 4h6v6M20 4l-9 9M19 14v5H5V5h5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+
+      <!-- Webview stack -->
+      <div class="webview-stack" id="webviewStack"></div>
+
+      <!-- Empty state -->
+      <section class="empty" id="emptyState">
+        <div class="empty-card">
+          <div class="empty-mark">
+            <svg viewBox="0 0 24 24" width="40" height="40">
+              <path d="M4 4.8a1.6 1.6 0 0 1 1.6-1.6h12.8A1.6 1.6 0 0 1 20 4.8v8.4L12 21l-8-7.8V4.8Z" fill="currentColor"/>
+              <circle cx="12" cy="10" r="3" fill="#fff"/><circle cx="12" cy="10" r="1.25" fill="currentColor"/>
+            </svg>
+          </div>
+          <h1>Welcome to WorkHub</h1>
+          <p>Keep all your school &amp; work apps in one place — pinned like tabs, always a click away. Add your first site to get started.</p>
+          <button class="primary-btn" id="emptyAddBtn">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Add your first site
+          </button>
+          <div class="suggestions">
+            <span class="suggestions-label">Or pick a common one:</span>
+            <div class="suggestion-chips" id="suggestionChips"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ===================== Add / Edit modal ===================== -->
+  <div class="modal-overlay" id="siteModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="siteModalTitle">
+      <h2 id="siteModalTitle">Add site</h2>
+      <label class="field">
+        <span>Name</span>
+        <input type="text" id="siteName" placeholder="e.g. Google Classroom" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>Web address</span>
+        <input type="text" id="siteUrl" placeholder="e.g. classroom.google.com" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>List</span>
+        <select class="select" id="siteList" style="width:100%"></select>
+      </label>
+      <p class="field-hint" id="siteError" hidden></p>
+      <div class="modal-actions">
+        <button class="text-btn danger" id="deleteSiteBtn" hidden>Remove</button>
+        <span class="spacer"></span>
+        <button class="text-btn" id="cancelSiteBtn">Cancel</button>
+        <button class="primary-btn" id="saveSiteBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Settings modal ===================== -->
+  <div class="modal-overlay" id="settingsModal" hidden>
+    <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <h2 id="settingsTitle">Settings</h2>
+
+      <h3 class="section-h">Profile</h3>
+      <label class="field">
+        <span>Your name</span>
+        <input type="text" id="profileName" placeholder="e.g. Matt" autocomplete="off" />
+      </label>
+      <div class="setting-row">
+        <div class="setting-text"><strong>Avatar</strong><span>Upload a photo, or use a coloured circle with your initial.</span></div>
+        <div class="avatar-controls">
+          <span class="avatar-preview" id="avatarPreview"></span>
+          <label class="text-btn" for="avatarFile">Upload…</label>
+          <input type="file" id="avatarFile" accept="image/*" hidden />
+          <button class="text-btn" id="avatarRemove">Remove</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-text"><strong>Avatar colour</strong><span>Used for the initial circle when there's no photo.</span></div>
+        <div class="swatches" id="avatarSwatches">
+          <button data-color="#ef4444" title="Red" style="--sw:#ef4444"></button>
+          <button data-color="#f59e0b" title="Amber" style="--sw:#f59e0b"></button>
+          <button data-color="#10b981" title="Green" style="--sw:#10b981"></button>
+          <button data-color="#3b82f6" title="Blue" style="--sw:#3b82f6"></button>
+          <button data-color="#8b5cf6" title="Violet" style="--sw:#8b5cf6"></button>
+          <button data-color="#ec4899" title="Pink" style="--sw:#ec4899"></button>
+          <button data-color="#14b8a6" title="Teal" style="--sw:#14b8a6"></button>
+          <button data-color="#64748b" title="Slate" style="--sw:#64748b"></button>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Appearance</strong><span>Dark mode is on by default.</span></div>
+        <div class="segmented" id="themeToggle">
+          <button data-theme="dark" class="active">Dark</button>
+          <button data-theme="light">Light</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Colour scheme</strong><span>Accent colour used across the app.</span></div>
+        <div class="swatches" id="schemeSwatches">
+          <button data-scheme="blue" class="active" title="Blue" style="--sw:#3b82f6"></button>
+          <button data-scheme="aubergine" title="Aubergine" style="--sw:#a855f7"></button>
+          <button data-scheme="forest" title="Forest" style="--sw:#22c55e"></button>
+          <button data-scheme="teal" title="Teal" style="--sw:#14b8a6"></button>
+          <button data-scheme="ember" title="Ember" style="--sw:#fb923c"></button>
+          <button data-scheme="rose" title="Rose" style="--sw:#f43f5e"></button>
+          <button data-scheme="graphite" title="Graphite" style="--sw:#94a3b8"></button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Font</strong><span>Several options follow British Dyslexia Association guidance.</span></div>
+        <select class="select" id="fontSelect">
+          <option value="system">System default</option>
+          <option value="verdana">Verdana — dyslexia-friendly</option>
+          <option value="comic">Comic Sans — dyslexia-friendly</option>
+          <option value="tahoma">Tahoma — dyslexia-friendly</option>
+          <option value="century">Century Gothic — dyslexia-friendly</option>
+          <option value="trebuchet">Trebuchet MS</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Sidebar position</strong><span>Dock the links bar to any edge of the window.</span></div>
+        <div class="segmented" id="dockToggle">
+          <button data-dock="left" class="active">Left</button>
+          <button data-dock="top">Top</button>
+          <button data-dock="right">Right</button>
+          <button data-dock="bottom">Bottom</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Compact sidebar</strong><span>Icons only. Drag the sidebar's inner edge any time to resize it.</span></div>
+        <label class="switch"><input type="checkbox" id="compactToggle" /><span class="slider"></span></label>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Lock sidebar</strong><span>Stop entries being dragged/reordered and the sidebar being resized.</span></div>
+        <label class="switch"><input type="checkbox" id="lockToggle" /><span class="slider"></span></label>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Launch at startup</strong><span>Open WorkHub automatically when you sign in.</span></div>
+        <label class="switch"><input type="checkbox" id="startupToggle" /><span class="slider"></span></label>
+      </div>
+
+      <hr class="divider" />
+      <h3 class="section-h">Office Apps</h3>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Office suite</strong><span>Pick a suite, then tick the apps you want shown.</span></div>
+        <select class="select" id="officeSuite">
+          <option value="google">Google Workspace</option>
+          <option value="microsoft">Microsoft 365</option>
+        </select>
+      </div>
+      <div class="office-checklist" id="officeChecklist"></div>
+
+      <hr class="divider" />
+      <h3 class="section-h">Lists</h3>
+      <div class="lists-manager" id="listsManager"></div>
+      <div class="setting-row">
+        <div class="setting-text"><strong>New list</strong><span>Create your own section, then assign sites to it when adding or editing them.</span></div>
+        <div class="inline-add">
+          <input type="text" id="newListName" placeholder="List name" autocomplete="off" />
+          <button class="text-btn accent" id="addListBtn">Add</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Other service</strong><span>Add your own, e.g. Nextcloud or Zoho.</span></div>
+        <div class="inline-add">
+          <input type="text" id="customOfficeName" placeholder="Name" autocomplete="off" />
+          <input type="text" id="customOfficeUrl" placeholder="URL" autocomplete="off" />
+          <button class="text-btn accent" id="addCustomOfficeBtn">Add</button>
+        </div>
+      </div>
+
+      <hr class="divider" />
+      <h3 class="section-h">Performance <span class="badge-lite">Lite</span></h3>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Sleep inactive tabs</strong><span>Frees memory by closing tabs you haven't used in a while. They reload instantly when you click them — the biggest saving for an app left open all day.</span></div>
+        <label class="switch"><input type="checkbox" id="sleepToggle" /><span class="slider"></span></label>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Sleep after</strong><span>How long a tab can sit unused before it sleeps.</span></div>
+        <select class="select" id="sleepMinutes">
+          <option value="2">2 minutes</option>
+          <option value="5">5 minutes</option>
+          <option value="15">15 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="60">1 hour</option>
+          <option value="0">Never</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Reduce animations</strong><span>Turns off transitions for a snappier, lighter feel.</span></div>
+        <label class="switch"><input type="checkbox" id="reduceAnimToggle" /><span class="slider"></span></label>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Hardware acceleration</strong><span>Uses the GPU for smoother scrolling and video. Turn off on low-end machines to drop the GPU process and save memory. Restart required.</span></div>
+        <label class="switch"><input type="checkbox" id="hwAccelToggle" /><span class="slider"></span></label>
+      </div>
+
+      <hr class="divider" />
+      <h3 class="section-h">Smoothwall</h3>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Show tray indicator</strong><span>Sign-in status in the system tray, with a quick-login popover.</span></div>
+        <label class="switch"><input type="checkbox" id="smoothwallToggle" /><span class="slider"></span></label>
+      </div>
+
+      <label class="field">
+        <span>Smoothwall login URL</span>
+        <input type="text" id="smoothwallUrl" placeholder="https://192.168.1.2/iclogin" autocomplete="off" />
+      </label>
+
+      <hr class="divider" />
+      <h3 class="section-h">Workspace</h3>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Export / Import</strong><span>Save your sites, sections, colours, font and settings to a file, then import it on another machine.</span></div>
+        <div class="inline-add">
+          <button class="text-btn" id="importWsBtn">Import…</button>
+          <button class="text-btn accent" id="exportWsBtn">Export…</button>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Reset all sites</strong><span>Removes every pinned site and returns to the empty state.</span></div>
+        <button class="text-btn danger" id="resetSitesBtn">Reset sites</button>
+      </div>
+
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="text-btn" id="closeSettingsBtn">Close</button>
+        <button class="primary-btn" id="saveSettingsBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notifications popover -->
+  <div class="notif-panel" id="notifPanel" hidden>
+    <div class="notif-head">
+      <span class="notif-head-title">Notifications</span>
+      <button class="notif-close" id="notifClose" title="Close" aria-label="Close"></button>
+    </div>
+    <div class="notif-list" id="notifList"></div>
+    <div class="notif-foot"><button class="text-btn" id="notifClear">Clear all</button></div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
