@@ -265,6 +265,7 @@ function applyProfile() {
     }
   }
   fitBrandName();
+  applyAppIcon();
 }
 
 // Shrink the brand name to fit the sidebar width, down to a floor, then ellipsis.
@@ -277,6 +278,13 @@ function fitBrandName() {
   if (!avail) return;
   let size = 16, guard = 0;
   while (el.scrollWidth > avail && size > 11 && guard < 40) { size -= 0.5; el.style.fontSize = size + 'px'; guard++; }
+}
+
+// Recolour the WorkHub logo (sidebar + empty state). null/empty = follow accent.
+function applyAppIcon() {
+  const c = state.settings && state.settings.appIconColor;
+  if (c) document.documentElement.style.setProperty('--app-icon', c);
+  else document.documentElement.style.removeProperty('--app-icon');
 }
 
 function renderAvatarPreview() {
@@ -810,6 +818,8 @@ function openSettings() {
     b.classList.toggle('active', b.dataset.theme === s.theme));
   document.querySelectorAll('#schemeSwatches button').forEach((b) =>
     b.classList.toggle('active', b.dataset.scheme === (s.scheme || 'blue')));
+  document.querySelectorAll('#appIconSwatches button').forEach((b) =>
+    b.classList.toggle('active', (b.dataset.color || '') === (s.appIconColor || '')));
   $('fontSelect').value = s.font || 'system';
   const prof = s.profile || {};
   $('profileName').value = prof.name || '';
@@ -846,9 +856,11 @@ async function saveSettings() {
   const theme = document.querySelector('#themeToggle button.active').dataset.theme;
   const dock = document.querySelector('#dockToggle button.active').dataset.dock;
   const activeScheme = document.querySelector('#schemeSwatches button.active');
+  const activeIcon = document.querySelector('#appIconSwatches button.active');
   const next = {
     theme,
     scheme: activeScheme ? activeScheme.dataset.scheme : (state.settings.scheme || 'blue'),
+    appIconColor: activeIcon ? (activeIcon.dataset.color || null) : (state.settings.appIconColor || null),
     font: $('fontSelect').value,
     profile: {
       name: $('profileName').value.trim(),
@@ -994,6 +1006,14 @@ function wireEvents() {
       applyAppearance();
     });
   });
+  document.querySelectorAll('#appIconSwatches button').forEach((b) => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#appIconSwatches button').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      state.settings.appIconColor = b.dataset.color || null;
+      applyAppIcon();
+    });
+  });
   $('fontSelect').addEventListener('change', () => {
     state.settings.font = $('fontSelect').value;
     applyAppearance();
@@ -1129,6 +1149,13 @@ function wireEvents() {
     if (e.target.closest('.tab') || e.target.closest('.resize-handle')) return;
     e.preventDefault();
     showSidebarMenu(e.clientX, e.clientY);
+  });
+
+  // Right-click the address bar -> hide it
+  const navbarEl = document.getElementById('navbar');
+  if (navbarEl) navbarEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showAddressBarMenu(e.clientX, e.clientY);
   });
 
   window.addEventListener('resize', fitBrandName);
@@ -1320,6 +1347,33 @@ function showSidebarMenu(x, y) {
     applySidebar();
     hideLinkMenu();
     await api.setSettings({ sidebar: sb });
+  });
+  menu.appendChild(item);
+  document.body.appendChild(menu);
+  let mx = x, my = y;
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  if (mx + mw > window.innerWidth - 8) mx = window.innerWidth - mw - 8;
+  if (my + mh > window.innerHeight - 8) my = window.innerHeight - mh - 8;
+  menu.style.left = Math.max(8, mx) + 'px';
+  menu.style.top = Math.max(8, my) + 'px';
+}
+
+function showAddressBarMenu(x, y) {
+  hideLinkMenu();
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.id = 'ctxMenu';
+  const item = document.createElement('button');
+  item.className = 'ctx-item';
+  item.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  const span = document.createElement('span');
+  span.textContent = 'Hide address bar';
+  item.appendChild(span);
+  item.addEventListener('click', async () => {
+    state.settings.showAddressBar = false;
+    updateEmptyState();
+    hideLinkMenu();
+    await api.setSettings({ showAddressBar: false });
   });
   menu.appendChild(item);
   document.body.appendChild(menu);
@@ -1615,6 +1669,7 @@ async function boot() {
   if (!state.settings.updates) state.settings.updates = { autoCheck: true };
   if (!state.settings.notifications) state.settings.notifications = { os: true, apps: {} };
   if (state.settings.showAddressBar === undefined) state.settings.showAddressBar = true;
+  if (state.settings.appIconColor === undefined) state.settings.appIconColor = null;
 
   setTheme(state.settings.theme);
   applySidebar();

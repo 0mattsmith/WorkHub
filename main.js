@@ -35,6 +35,7 @@ const DEFAULT_CONFIG = {
     scheme: 'blue',                      // accent colour scheme
     font: 'system',                      // UI font family
     showAddressBar: true,                // back/forward/reload/URL bar above each app
+    appIconColor: null,                  // WorkHub logo colour; null = follow theme accent
     profile: { name: '', avatar: null, avatarColor: null },
     customLists: [],
     collapsed: {},
@@ -129,9 +130,11 @@ let config = loadConfig();
     'enable-features',
     'PageFreeze,HighEfficiencyModeAvailable,WebContentsDiscard'
   );
+  // Also disable User-Agent Client Hints so browser-sniffing apps (Slack/Teams)
+  // fall back to our spoofed UA string instead of seeing the real Chromium.
   app.commandLine.appendSwitch(
     'disable-features',
-    'HardwareMediaKeyHandling,MediaSessionService'
+    'HardwareMediaKeyHandling,MediaSessionService,UserAgentClientHint'
   );
   if (perf.hardwareAcceleration === false) {
     app.disableHardwareAcceleration();   // drops the GPU process entirely

@@ -70,7 +70,7 @@ body {
 }
 
 .brand { display: flex; align-items: center; gap: 11px; padding: 6px 8px 16px; }
-.brand-mark { color: var(--accent); display: flex; }
+.brand-mark { color: var(--app-icon, var(--accent)); display: flex; }
 .brand-text { display: flex; flex-direction: column; line-height: 1.1; flex: 1; min-width: 0; overflow: hidden; }
 .brand-name { font-weight: 700; font-size: 16px; letter-spacing: -0.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .brand-sub { font-size: 11px; color: var(--text-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -163,7 +163,7 @@ body {
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .empty[hidden] { display: none; }
 .empty-card { max-width: 460px; text-align: center; }
-.empty-mark { color: var(--accent); display: flex; justify-content: center; margin-bottom: 18px; opacity: .95; }
+.empty-mark { color: var(--app-icon, var(--accent)); display: flex; justify-content: center; margin-bottom: 18px; opacity: .95; }
 .empty-card h1 { font-size: 24px; letter-spacing: -0.4px; margin-bottom: 10px; }
 .empty-card p { color: var(--text-dim); line-height: 1.55; font-size: 14.5px; margin-bottom: 22px; }
 
