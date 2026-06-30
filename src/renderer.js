@@ -569,7 +569,7 @@ function renderTabs() {
 function updateEmptyState() {
   const hasSites = state.sites.length > 0;
   emptyState.hidden = hasSites;
-  navbar.hidden = !hasSites;
+  navbar.hidden = !hasSites || state.settings.showAddressBar === false;
   webviewStack.style.display = hasSites ? 'block' : 'none';
 }
 
@@ -768,6 +768,7 @@ function openSettings() {
     b.classList.toggle('active', b.dataset.dock === (sb.dock || 'left')));
   $('compactToggle').checked = !!sb.compact;
   $('lockToggle').checked = !!sb.locked;
+  $('addressBarToggle').checked = s.showAddressBar !== false;
 
   $('sleepToggle').checked = !!perf.sleepInactiveTabs;
   $('sleepMinutes').value = String(perf.sleepAfterMinutes != null ? perf.sleepAfterMinutes : 15);
@@ -800,6 +801,7 @@ async function saveSettings() {
       avatarColor: state.settings.profile ? state.settings.profile.avatarColor : null
     },
     launchAtStartup: $('startupToggle').checked,
+    showAddressBar: $('addressBarToggle').checked,
     updates: { autoCheck: $('autoUpdateToggle').checked },
     notifications: {
       os: $('osNotifyToggle').checked,
@@ -990,6 +992,10 @@ function wireEvents() {
     state.settings.sidebar.locked = $('lockToggle').checked;
     applySidebar();
     renderTabs();
+  });
+  $('addressBarToggle').addEventListener('change', () => {
+    state.settings.showAddressBar = $('addressBarToggle').checked;
+    updateEmptyState();
   });
 
   // Office Apps
@@ -1503,6 +1509,7 @@ async function boot() {
   if (!state.settings.profile) state.settings.profile = { name: '', avatar: null, avatarColor: null };
   if (!state.settings.updates) state.settings.updates = { autoCheck: true };
   if (!state.settings.notifications) state.settings.notifications = { os: true, apps: {} };
+  if (state.settings.showAddressBar === undefined) state.settings.showAddressBar = true;
 
   setTheme(state.settings.theme);
   applySidebar();

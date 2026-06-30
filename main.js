@@ -34,6 +34,7 @@ const DEFAULT_CONFIG = {
     theme: 'dark',                       // 'dark' | 'light'
     scheme: 'blue',                      // accent colour scheme
     font: 'system',                      // UI font family
+    showAddressBar: true,                // back/forward/reload/URL bar above each app
     profile: { name: '', avatar: null, avatarColor: null },
     customLists: [],
     collapsed: {},
