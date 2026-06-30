@@ -16,6 +16,10 @@ contextBridge.exposeInMainWorld('workhub', {
   resetSites:       () => ipcRenderer.invoke('sites:reset'),
   setSettings:      (settings) => ipcRenderer.invoke('settings:set', settings),
 
+  // ---- sticky notes / to-do lists ----
+  setNotes:         (notes) => ipcRenderer.invoke('notes:set', notes),
+  setTodos:         (todos) => ipcRenderer.invoke('todos:set', todos),
+
   // ---- smoothwall ----
   openSmoothwall:   () => ipcRenderer.invoke('smoothwall:open'),
   checkSmoothwall:  () => ipcRenderer.invoke('smoothwall:check'),

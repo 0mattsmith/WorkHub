@@ -513,3 +513,81 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after {
 .notif-item.clickable { cursor: pointer; }
 .notif-item.clickable:hover { border-color: var(--accent); }
 .notify-apps { display: flex; flex-direction: column; gap: 1px; margin-bottom: 6px; max-height: 220px; overflow-y: auto; }
+
+/* ===========================================================================
+   Sticky notes & to-do lists
+   =========================================================================== */
+
+/* Sidebar sections -------------------------------------------------------- */
+.sb-widgets { padding: 6px 8px 2px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; max-height: 38vh; overflow-y: auto; }
+.sb-wid-sec { display: flex; flex-direction: column; gap: 3px; }
+.sb-wid-head { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding: 0 4px; }
+.sb-wid-add { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.sb-wid-add:hover { color: var(--text); border-color: var(--accent); }
+.sb-wid-list { display: flex; flex-direction: column; gap: 2px; }
+.wid-empty { font-size: 11px; color: var(--muted); padding: 2px 6px; opacity: .7; }
+.wid-item { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: 7px; cursor: pointer; color: var(--text); }
+.wid-item:hover { background: var(--hover); }
+.wid-dot { width: 11px; height: 11px; border-radius: 3px; flex: 0 0 auto; box-shadow: 0 0 0 1px rgba(0,0,0,.15) inset; }
+.wid-dot.todo { border-radius: 50%; background: var(--accent); }
+.wid-label { flex: 1; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wid-del { opacity: 0; flex: 0 0 auto; }
+.wid-item:hover .wid-del { opacity: .6; }
+.wid-del:hover { opacity: 1; }
+
+/* In compact (icon-only) sidebar, hide the section text but keep it usable */
+.app.compact .sb-wid-head span { display: none; }
+.app.compact .wid-label { display: none; }
+.app.compact .sb-widgets { align-items: center; }
+.app.compact .wid-item { justify-content: center; padding: 5px; }
+
+/* Floating layer ---------------------------------------------------------- */
+.widget-layer { position: fixed; inset: 0; pointer-events: none; z-index: 95; }
+.widget-layer > * { pointer-events: auto; }
+
+/* Sticky note ------------------------------------------------------------- */
+.sticky { position: absolute; width: 210px; min-height: 170px; padding: 22px 12px 12px; border-radius: 3px; color: #1f2937;
+  box-shadow: 0 8px 22px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.2); display: flex; flex-direction: column; }
+.sticky.dragging { box-shadow: 0 16px 36px rgba(0,0,0,.42); }
+.sticky-pin { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); cursor: grab; filter: drop-shadow(0 2px 2px rgba(0,0,0,.35)); }
+.sticky.dragging .sticky-pin { cursor: grabbing; }
+.sticky-tools { position: absolute; top: 4px; right: 6px; display: flex; gap: 1px; opacity: 0; transition: opacity .12s; }
+.sticky:hover .sticky-tools { opacity: 1; }
+.sticky-text { flex: 1; border: none; background: transparent; resize: none; outline: none; color: inherit; font-size: 15px; line-height: 1.45;
+  font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", "Comic Neue", cursive; }
+.sticky.plain .sticky-text { font-family: inherit; font-size: 13.5px; }
+.sticky-text::placeholder { color: rgba(31,41,55,.45); }
+
+/* Tool buttons (shared by notes + todos) ---------------------------------- */
+.wtool { width: 22px; height: 22px; border: none; background: transparent; border-radius: 5px; cursor: pointer; color: #374151;
+  display: flex; align-items: center; justify-content: center; opacity: .75; }
+.wtool:hover { opacity: 1; background: rgba(0,0,0,.1); }
+.wtool-text { font-size: 12px; font-weight: 700; }
+
+/* To-do notebook ---------------------------------------------------------- */
+.todo-win { position: absolute; width: 250px; background: var(--panel, var(--bg-elev, #1e2330)); color: var(--text); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,.4); overflow: hidden; }
+.todo-head { display: flex; align-items: center; gap: 4px; padding: 7px 8px; cursor: grab; background: var(--accent); color: #fff; }
+.todo-win.dragging .todo-head { cursor: grabbing; }
+.todo-collapse { color: #fff; }
+.todo-collapse svg { transition: transform .15s; }
+.todo-win.collapsed .todo-collapse svg { transform: rotate(-90deg); }
+.todo-head .wtool { color: #fff; }
+.todo-title { flex: 1; border: none; background: transparent; color: #fff; font-weight: 600; font-size: 13.5px; outline: none; min-width: 0; }
+.todo-title::placeholder { color: rgba(255,255,255,.6); }
+.todo-head-tools { display: flex; gap: 1px; }
+.todo-body { padding: 6px; max-height: 320px; overflow-y: auto; }
+.todo-win.collapsed .todo-body { display: none; }
+.todo-items { display: flex; flex-direction: column; gap: 1px; }
+.todo-item { display: flex; align-items: center; gap: 7px; padding: 3px 4px; border-radius: 6px; }
+.todo-item:hover { background: var(--hover); }
+.todo-item input[type="checkbox"] { flex: 0 0 auto; accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+.todo-text { flex: 1; border: none; background: transparent; color: var(--text); font-size: 13px; outline: none; min-width: 0; }
+.todo-text::placeholder { color: var(--muted); }
+.todo-item.done .todo-text { text-decoration: line-through; color: var(--muted); }
+.todo-item-del { color: var(--muted); opacity: 0; }
+.todo-item:hover .todo-item-del { opacity: .7; }
+.todo-item-del:hover { opacity: 1; color: var(--text); }
+.todo-add { display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 4px; padding: 5px 6px; border: 1px dashed var(--border);
+  background: transparent; color: var(--muted); border-radius: 7px; cursor: pointer; font-size: 12.5px; }
+.todo-add:hover { color: var(--text); border-color: var(--accent); }

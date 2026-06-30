@@ -66,7 +66,9 @@ const DEFAULT_CONFIG = {
       checkIntervalSeconds: 60
     }
   },
-  slack: { clientId: '', redirectUri: 'https://0mattsmith.github.io/workhub/slack-callback.html' }
+  slack: { clientId: '', redirectUri: 'https://0mattsmith.github.io/workhub/slack-callback.html' },
+  notes: [],   // sticky notes
+  todos: []    // to-do lists
 };
 
 // Suggestions shown on the empty state. Purely cosmetic shortcuts.
@@ -519,6 +521,18 @@ ipcMain.handle('sites:set', (_e, sites) => {
   config.sites = Array.isArray(sites) ? sites : [];
   saveConfig(config);
   return config.sites;
+});
+
+ipcMain.handle('notes:set', (_e, notes) => {
+  config.notes = Array.isArray(notes) ? notes : [];
+  saveConfig(config);
+  return config.notes;
+});
+
+ipcMain.handle('todos:set', (_e, todos) => {
+  config.todos = Array.isArray(todos) ? todos : [];
+  saveConfig(config);
+  return config.todos;
 });
 
 ipcMain.handle('sites:reset', () => {
