@@ -833,6 +833,7 @@ function openSettings() {
   $('compactToggle').checked = !!sb.compact;
   $('lockToggle').checked = !!sb.locked;
   $('addressBarToggle').checked = s.showAddressBar !== false;
+  $('exportWidgetsToggle').checked = !!s.exportIncludesWidgets;
 
   $('sleepToggle').checked = !!perf.sleepInactiveTabs;
   $('sleepMinutes').value = String(perf.sleepAfterMinutes != null ? perf.sleepAfterMinutes : 15);
@@ -847,7 +848,21 @@ function openSettings() {
   $('osNotifyToggle').checked = !(s.notifications && s.notifications.os === false);
   renderNotifyApps();
   refreshSlackUI();
+  setSettingsPane(currentSettingsPane);
   $('settingsModal').hidden = false;
+}
+
+let currentSettingsPane = 'profile';
+function setSettingsPane(name) {
+  currentSettingsPane = name || 'profile';
+  document.querySelectorAll('#settingsNav button').forEach((b) => {
+    b.classList.toggle('active', b.dataset.pane === currentSettingsPane);
+  });
+  document.querySelectorAll('.settings-pane').forEach((p) => {
+    p.classList.toggle('active', p.dataset.pane === currentSettingsPane);
+  });
+  const body = $('settingsBody');
+  if (body) body.scrollTop = 0;
 }
 
 function closeSettings() { $('settingsModal').hidden = true; }
@@ -869,6 +884,7 @@ async function saveSettings() {
     },
     launchAtStartup: $('startupToggle').checked,
     showAddressBar: $('addressBarToggle').checked,
+    exportIncludesWidgets: $('exportWidgetsToggle').checked,
     updates: { autoCheck: $('autoUpdateToggle').checked },
     notifications: {
       os: $('osNotifyToggle').checked,
@@ -974,6 +990,10 @@ function wireEvents() {
   $('siteName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('siteUrl').focus(); });
 
   $('settingsBtn').addEventListener('click', openSettings);
+  $('settingsNav').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-pane]');
+    if (btn) setSettingsPane(btn.dataset.pane);
+  });
   $('saveSettingsBtn').addEventListener('click', saveSettings);
   $('closeSettingsBtn').addEventListener('click', closeSettings);
   $('resetSitesBtn').addEventListener('click', resetSites);

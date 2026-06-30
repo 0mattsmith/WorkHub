@@ -40,6 +40,7 @@ const DEFAULT_CONFIG = {
     customLists: [],
     collapsed: {},
     launchAtStartup: false,
+    exportIncludesWidgets: false,        // include sticky notes + to-do lists in workspace export
     updates: { autoCheck: true },
     notifications: { os: true, apps: {} },   // os = master toggle; apps[siteId]=false to mute
     sidebar: {
@@ -793,6 +794,10 @@ ipcMain.handle('workspace:export', async () => {
       app: 'WorkHub', schema: 1, exportedAt: new Date().toISOString(),
       sites: config.sites, settings: config.settings
     };
+    if (config.settings && config.settings.exportIncludesWidgets) {
+      payload.notes = config.notes;   // opt-in: carry sticky notes + to-do lists across machines
+      payload.todos = config.todos;
+    }
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf8');
     return { ok: true, path: filePath };
   } catch (e) {
@@ -811,6 +816,8 @@ ipcMain.handle('workspace:import', async () => {
     const parsed = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'));
     if (Array.isArray(parsed.sites)) config.sites = parsed.sites;
     if (parsed.settings) config.settings = deepMerge(DEFAULT_CONFIG.settings, parsed.settings);
+    if (Array.isArray(parsed.notes)) config.notes = parsed.notes;   // present only if the export opted in
+    if (Array.isArray(parsed.todos)) config.todos = parsed.todos;
     saveConfig(config);
     startStatusPolling();
     rebuildTrayMenu();

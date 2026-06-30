@@ -151,7 +151,24 @@
     <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
       <h2 id="settingsTitle">Settings</h2>
 
-      <h3 class="section-h">Profile</h3>
+      <div class="settings-layout">
+        <nav class="settings-nav" id="settingsNav">
+          <button type="button" data-pane="profile" class="active">Profile</button>
+          <button type="button" data-pane="appearance">Appearance</button>
+          <button type="button" data-pane="sidebar">Sidebar</button>
+          <button type="button" data-pane="office">Office &amp; Lists</button>
+          <button type="button" data-pane="performance">Performance</button>
+          <button type="button" data-pane="notifications">Notifications</button>
+          <button type="button" data-pane="smoothwall">Smoothwall</button>
+          <button type="button" data-pane="slack">Slack</button>
+          <button type="button" data-pane="workspace">Workspace</button>
+          <button type="button" data-pane="updates">Updates</button>
+          <button type="button" data-pane="general">General</button>
+        </nav>
+        <div class="settings-body" id="settingsBody">
+
+        <section class="settings-pane active" data-pane="profile">
+          <h3 class="section-h">Profile</h3>
       <label class="field">
         <span>Your name</span>
         <input type="text" id="profileName" placeholder="e.g. Matt" autocomplete="off" />
@@ -179,10 +196,12 @@
         </div>
       </div>
 
-      <hr class="divider" />
+        </section>
 
+        <section class="settings-pane" data-pane="appearance">
+          <h3 class="section-h">Appearance</h3>
       <div class="setting-row">
-        <div class="setting-text"><strong>Appearance</strong><span>Dark mode is on by default.</span></div>
+        <div class="setting-text"><strong>Theme</strong><span>Dark mode is on by default.</span></div>
         <div class="segmented" id="themeToggle">
           <button data-theme="dark" class="active">Dark</button>
           <button data-theme="light">Light</button>
@@ -228,7 +247,10 @@
           <option value="trebuchet">Trebuchet MS</option>
         </select>
       </div>
+        </section>
 
+        <section class="settings-pane" data-pane="sidebar">
+          <h3 class="section-h">Sidebar</h3>
       <div class="setting-row">
         <div class="setting-text"><strong>Sidebar position</strong><span>Dock the links bar to any edge of the window.</span></div>
         <div class="segmented" id="dockToggle">
@@ -254,14 +276,10 @@
         <label class="switch"><input type="checkbox" id="addressBarToggle" /><span class="slider"></span></label>
       </div>
 
-      <div class="setting-row">
-        <div class="setting-text"><strong>Launch at startup</strong><span>Open WorkHub automatically when you sign in.</span></div>
-        <label class="switch"><input type="checkbox" id="startupToggle" /><span class="slider"></span></label>
-      </div>
+        </section>
 
-      <hr class="divider" />
-      <h3 class="section-h">Office Apps</h3>
-
+        <section class="settings-pane" data-pane="office">
+          <h3 class="section-h">Office &amp; Lists</h3>
       <div class="setting-row">
         <div class="setting-text"><strong>Office suite</strong><span>Pick a suite, then tick the apps you want shown.</span></div>
         <select class="select" id="officeSuite">
@@ -271,8 +289,7 @@
       </div>
       <div class="office-checklist" id="officeChecklist"></div>
 
-      <hr class="divider" />
-      <h3 class="section-h">Lists</h3>
+      <h4 class="sub-h">Lists</h4>
       <div class="lists-manager" id="listsManager"></div>
       <div class="setting-row">
         <div class="setting-text"><strong>New list</strong><span>Create your own section, then assign sites to it when adding or editing them.</span></div>
@@ -291,8 +308,10 @@
         </div>
       </div>
 
-      <hr class="divider" />
-      <h3 class="section-h">Performance <span class="badge-lite">Lite</span></h3>
+        </section>
+
+        <section class="settings-pane" data-pane="performance">
+          <h3 class="section-h">Performance <span class="badge-lite">Lite</span></h3>
 
       <div class="setting-row">
         <div class="setting-text"><strong>Sleep inactive tabs</strong><span>Frees memory by closing tabs you haven't used in a while. They reload instantly when you click them — the biggest saving for an app left open all day.</span></div>
@@ -321,8 +340,10 @@
         <label class="switch"><input type="checkbox" id="hwAccelToggle" /><span class="slider"></span></label>
       </div>
 
-      <hr class="divider" />
-      <h3 class="section-h">Notifications</h3>
+        </section>
+
+        <section class="settings-pane" data-pane="notifications">
+          <h3 class="section-h">Notifications</h3>
 
       <div class="setting-row">
         <div class="setting-text"><strong>Windows desktop notifications</strong><span>Also show app notifications as Windows toasts. They always appear in the in-app panel.</span></div>
@@ -333,8 +354,10 @@
       </div>
       <div class="notify-apps" id="notifApps"></div>
 
-      <hr class="divider" />
-      <h3 class="section-h">Smoothwall</h3>
+        </section>
+
+        <section class="settings-pane" data-pane="smoothwall">
+          <h3 class="section-h">Smoothwall</h3>
 
       <div class="setting-row">
         <div class="setting-text"><strong>Show tray indicator</strong><span>Sign-in status in the system tray, with a quick-login popover.</span></div>
@@ -346,8 +369,10 @@
         <input type="text" id="smoothwallUrl" placeholder="https://192.168.1.2/iclogin" autocomplete="off" />
       </label>
 
-      <hr class="divider" />
-      <h3 class="section-h">Slack <span class="badge-lite">Native</span></h3>
+        </section>
+
+        <section class="settings-pane" data-pane="slack">
+          <h3 class="section-h">Slack <span class="badge-lite">Native</span></h3>
 
       <div class="setting-row">
         <div class="setting-text"><strong id="slackStatusLine">Not connected</strong><span id="slackStatusSub">Enter your Slack app credentials, save, then connect.</span></div>
@@ -374,8 +399,10 @@
         <button class="text-btn accent" id="slackSaveCreds">Save credentials</button>
       </div>
 
-      <hr class="divider" />
-      <h3 class="section-h">Workspace</h3>
+        </section>
+
+        <section class="settings-pane" data-pane="workspace">
+          <h3 class="section-h">Workspace</h3>
 
       <div class="setting-row">
         <div class="setting-text"><strong>Export / Import</strong><span>Save your sites, sections, colours, font and settings to a file, then import it on another machine.</span></div>
@@ -385,8 +412,15 @@
         </div>
       </div>
 
-      <hr class="divider" />
-      <h3 class="section-h">Updates</h3>
+      <div class="setting-row">
+        <div class="setting-text"><strong>Include notes &amp; to-dos</strong><span>Add your sticky notes and to-do lists to the exported workspace file. Off by default.</span></div>
+        <label class="switch"><input type="checkbox" id="exportWidgetsToggle"><span class="slider"></span></label>
+      </div>
+
+        </section>
+
+        <section class="settings-pane" data-pane="updates">
+          <h3 class="section-h">Updates</h3>
 
       <div class="setting-row">
         <div class="setting-text"><strong>Version <span id="appVersion">—</span></strong><span id="updateStatus">Check for the latest version.</span></div>
@@ -402,12 +436,22 @@
         <label class="switch"><input type="checkbox" id="autoUpdateToggle" /><span class="slider"></span></label>
       </div>
 
-      <hr class="divider" />
+        </section>
 
+        <section class="settings-pane" data-pane="general">
+          <h3 class="section-h">General</h3>
+      <div class="setting-row">
+        <div class="setting-text"><strong>Launch at startup</strong><span>Open WorkHub automatically when you sign in.</span></div>
+        <label class="switch"><input type="checkbox" id="startupToggle" /><span class="slider"></span></label>
+      </div>
       <div class="setting-row">
         <div class="setting-text"><strong>Reset all sites</strong><span>Removes every pinned site and returns to the empty state.</span></div>
         <button class="text-btn danger" id="resetSitesBtn">Reset sites</button>
       </div>
+        </section>
+
+        </div><!-- /.settings-body -->
+      </div><!-- /.settings-layout -->
 
       <div class="modal-actions">
         <span class="spacer"></span>
