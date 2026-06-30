@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WorkHub · Slack sign-in</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #0f172a; color: #e2e8f0; display: flex; min-height: 100vh; margin: 0;
+      align-items: center; justify-content: center; text-align: center; }
+    .card { max-width: 440px; padding: 32px; }
+    h2 { margin: 0 0 10px; }
+    p { color: #94a3b8; line-height: 1.55; }
+    a { color: #3b82f6; }
+    .mark { width: 44px; height: 44px; margin: 0 auto 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <svg class="mark" viewBox="0 0 24 24"><path d="M4 4.8a1.6 1.6 0 0 1 1.6-1.6h12.8A1.6 1.6 0 0 1 20 4.8v8.4L12 21l-8-7.8V4.8Z" fill="#3b82f6"/><circle cx="12" cy="10" r="3" fill="#fff"/><circle cx="12" cy="10" r="1.25" fill="#3b82f6"/></svg>
+    <h2 id="h">Connecting to WorkHub…</h2>
+    <p id="p">One moment.</p>
+  </div>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var code = q.get('code'), state = q.get('state'), err = q.get('error');
+      var h = document.getElementById('h'), p = document.getElementById('p');
+      if (err) { h.textContent = 'Sign-in cancelled'; p.textContent = err; return; }
+      if (!code) { h.textContent = 'Missing authorization code'; p.textContent = 'Please try connecting again from WorkHub.'; return; }
+      var deep = 'workhub://slack-callback?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state || '');
+      h.textContent = 'Returning to WorkHub…';
+      p.innerHTML = 'If WorkHub doesn’t open automatically, <a href="' + deep + '">click here</a> — then you can close this tab.';
+      location.href = deep;
+    })();
+  </script>
+</body>
+</html>
