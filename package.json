@@ -1,7 +1,7 @@
 {
   "name": "workhub",
   "productName": "WorkHub",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A single home for all your school & work web apps — like pinned tabs, in their own desktop app. Includes a Smoothwall sign-in tray indicator.",
   "main": "main.js",
   "author": "Matt Smith",
@@ -49,7 +49,7 @@
       "createDesktopShortcut": true
     },
     "mac": {
-      "target": "dmg",
+      "target": [{ "target": "dmg", "arch": ["universal"] }],
       "icon": "build/icons/icon.png",
       "category": "public.app-category.productivity",
       "minimumSystemVersion": "11.0"

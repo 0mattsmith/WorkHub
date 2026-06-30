@@ -21,8 +21,7 @@ jobs:
       matrix:
         os:
           - windows-latest    # Windows .exe (NSIS)
-          - macos-13          # macOS Intel (Big Sur+) .dmg
-          - macos-14          # macOS Apple Silicon .dmg
+          - macos-latest      # macOS universal .dmg (Intel + Apple Silicon)
           - ubuntu-latest     # Linux .AppImage
 
     steps:
