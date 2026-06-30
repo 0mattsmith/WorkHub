@@ -1,7 +1,7 @@
 {
   "name": "workhub",
   "productName": "WorkHub",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A single home for all your school & work web apps — like pinned tabs, in their own desktop app. Includes a Smoothwall sign-in tray indicator.",
   "main": "main.js",
   "author": "Matt Smith",
