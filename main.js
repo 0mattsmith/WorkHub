@@ -540,6 +540,43 @@ ipcMain.handle('app:openExternal', (_e, url) => {
   return true;
 });
 
+// Download a favicon and return it as a data URL, so the renderer can cache it
+// (the main process isn't subject to the browser's cross-origin canvas limits).
+ipcMain.handle('icon:fetch', async (_e, url) => {
+  if (!/^https?:\/\//i.test(url || '')) return null;
+  return await new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; resolve(v); };
+    try {
+      const req = net.request(url);
+      const chunks = [];
+      let size = 0;
+      let type = 'image/png';
+      const to = setTimeout(() => { try { req.abort(); } catch (e) {} finish(null); }, 6000);
+      req.on('response', (res) => {
+        let ct = res.headers['content-type'] || 'image/png';
+        if (Array.isArray(ct)) ct = ct[0];
+        type = String(ct).split(';')[0].trim() || 'image/png';
+        if (res.statusCode !== 200 || !/^image\//.test(type)) {
+          clearTimeout(to); res.on('data', () => {}); res.on('end', () => {}); finish(null); return;
+        }
+        res.on('data', (c) => {
+          size += c.length;
+          if (size > 512 * 1024) { try { req.abort(); } catch (e) {} clearTimeout(to); finish(null); return; }
+          chunks.push(c);
+        });
+        res.on('end', () => {
+          clearTimeout(to);
+          if (!chunks.length) return finish(null);
+          finish('data:' + type + ';base64,' + Buffer.concat(chunks).toString('base64'));
+        });
+      });
+      req.on('error', () => { clearTimeout(to); finish(null); });
+      req.end();
+    } catch (e) { finish(null); }
+  });
+});
+
 ipcMain.handle('window:setTitle', (_e, title) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setTitle(title ? `WorkHub — ${title}` : 'WorkHub');

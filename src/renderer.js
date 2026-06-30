@@ -19,6 +19,10 @@ let sleepTimer = null;
 let webviewPreloadUrl = null;   // fetched from main (sandbox-safe)
 let dragId = null;              // id of the tab currently being dragged
 
+// Present embedded sites with a clean desktop-Chrome UA so apps like Slack/Teams
+// don't reject the browser (Slack refuses anything advertising "Electron").
+const WEBVIEW_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
 function sidebarLocked() {
   return !!(state.settings && state.settings.sidebar && state.settings.sidebar.locked);
 }
@@ -145,14 +149,56 @@ function siteHasAppIcon(site) {
   return !!(key && APP_ICONS[key]);
 }
 
+const iconFetching = new Set();
+let _persistTimer = null;
+function schedulePersist() {
+  if (_persistTimer) clearTimeout(_persistTimer);
+  _persistTimer = setTimeout(() => { _persistTimer = null; persistSites(); }, 800);
+}
+
+function setTabIconData(id, dataUrl) {
+  const el = document.querySelector(`.tab[data-id="${id}"] .tab-favicon`);
+  if (!el) return;
+  el.classList.remove('has-app-icon');
+  const img = document.createElement('img');
+  img.alt = '';
+  img.onload = () => { el.textContent = ''; el.innerHTML = ''; el.appendChild(img); };
+  img.src = dataUrl;
+}
+
+// Download + persist a favicon as a data URL so it survives restarts / offline.
+async function cacheSiteIcon(site, srcUrl) {
+  if (!srcUrl || siteHasAppIcon(site) || iconFetching.has(site.id) || !api.fetchIcon) return;
+  iconFetching.add(site.id);
+  try {
+    const dataUrl = await api.fetchIcon(srcUrl);
+    if (dataUrl && dataUrl !== site.favicon) {
+      site.favicon = dataUrl;
+      schedulePersist();
+      setTabIconData(site.id, dataUrl);
+    }
+  } catch (e) { /* ignore */ } finally {
+    iconFetching.delete(site.id);
+  }
+}
+
 function paintIcon(boxEl, site) {
   const key = site.icon || guessIcon(site.url);
   if (key && APP_ICONS[key]) {
     boxEl.classList.add('has-app-icon');
     boxEl.innerHTML = appIconSvg(key);
-  } else {
-    applyFavicon(boxEl, faviconUrl(site.url), site.name);
+    return;
   }
+  if (site.favicon) {                          // cached data URL — instant + offline-safe
+    const img = document.createElement('img');
+    img.alt = '';
+    boxEl.textContent = '';
+    boxEl.appendChild(img);
+    img.src = site.favicon;
+    return;
+  }
+  applyFavicon(boxEl, faviconUrl(site.url), site.name);   // live favicon (initial shown first)
+  cacheSiteIcon(site, faviconUrl(site.url));              // …then cache it for next time
 }
 
 /* ===========================================================================
@@ -315,6 +361,7 @@ function ensureWebview(site) {
   wv.setAttribute('partition', 'persist:workhub');   // shared session => SSO across apps
   wv.setAttribute('allowpopups', 'true');
   wv.setAttribute('webpreferences', 'backgroundThrottling=yes,spellcheck=no');
+  wv.setAttribute('useragent', WEBVIEW_UA);   // look like desktop Chrome (Slack/Teams compatibility)
   if (webviewPreloadUrl) wv.setAttribute('preload', webviewPreloadUrl);
   wv.setAttribute('src', startUrl);
   wv.dataset.id = site.id;
@@ -331,7 +378,11 @@ function ensureWebview(site) {
     updateTabBadge(site.id, c);
   });
   wv.addEventListener('page-favicon-updated', (e) => {
-    if (e.favicons && e.favicons[0] && !siteHasAppIcon(site)) setTabFavicon(site.id, e.favicons[0]);
+    if (e.favicons && e.favicons.length && !siteHasAppIcon(site)) {
+      const best = e.favicons[e.favicons.length - 1];   // usually the highest-res one
+      setTabFavicon(site.id, best);
+      cacheSiteIcon(site, best);                          // upgrade the cached copy
+    }
   });
   // Messages bubbled up from the per-site preload (Alt+right-click gesture).
   wv.addEventListener('ipc-message', (e) => {
@@ -704,6 +755,7 @@ async function saveSite() {
       const g = $('siteList').value; if (g) site.group = g; else delete site.group;
       if (urlChanged) {
         meta(site.id).lastUrl = null;
+        delete site.favicon;   // stale cached icon — let it re-fetch for the new URL
         if (webviews.has(site.id)) webviews.get(site.id).setAttribute('src', url);
       }
     }

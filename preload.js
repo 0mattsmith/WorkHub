@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('workhub', {
   },
 
   // ---- misc ----
+  fetchIcon:        (url) => ipcRenderer.invoke('icon:fetch', url),
   openExternal:     (url) => ipcRenderer.invoke('app:openExternal', url),
   setWindowTitle:   (title) => ipcRenderer.invoke('window:setTitle', title),
   onOpenUrlIntent:  (cb) => {
