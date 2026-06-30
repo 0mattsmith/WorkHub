@@ -779,6 +779,8 @@ function openSettings() {
   renderOfficeChecklist();
   renderListsManager();
   refreshUpdateUI();
+  $('osNotifyToggle').checked = !(s.notifications && s.notifications.os === false);
+  renderNotifyApps();
   $('settingsModal').hidden = false;
 }
 
@@ -799,6 +801,10 @@ async function saveSettings() {
     },
     launchAtStartup: $('startupToggle').checked,
     updates: { autoCheck: $('autoUpdateToggle').checked },
+    notifications: {
+      os: $('osNotifyToggle').checked,
+      apps: (state.settings.notifications && state.settings.notifications.apps) || {}
+    },
     sidebar: {
       dock,
       compact: $('compactToggle').checked,
@@ -1028,6 +1034,12 @@ function wireEvents() {
 
   api.onSmoothwallStatus(updateSmoothwallDot);
   api.onOpenUrlIntent((url) => api.openExternal(url));
+  api.onActivateSite((id) => { activateSite(id); hideNotifPanel(); });
+
+  $('osNotifyToggle').addEventListener('change', () => {
+    if (!state.settings.notifications) state.settings.notifications = { os: true, apps: {} };
+    state.settings.notifications.os = $('osNotifyToggle').checked;
+  });
 
   // Right-click an empty part of the sidebar -> quick Compact toggle
   const sidebarEl = document.getElementById('sidebar');
@@ -1136,6 +1148,39 @@ function renderListsManager() {
     del.addEventListener('click', () => deleteCustomList(name));
     row.appendChild(lab);
     row.appendChild(del);
+    wrap.appendChild(row);
+  }
+}
+
+function renderNotifyApps() {
+  const wrap = $('notifApps');
+  if (!wrap) return;
+  const nt = state.settings.notifications || (state.settings.notifications = { os: true, apps: {} });
+  if (!nt.apps) nt.apps = {};
+  wrap.innerHTML = '';
+  if (!state.sites.length) {
+    const p = document.createElement('div');
+    p.className = 'lists-empty';
+    p.textContent = 'No apps yet.';
+    wrap.appendChild(p);
+    return;
+  }
+  for (const s of state.sites) {
+    const row = document.createElement('label');
+    row.className = 'check-row';
+    const ic = document.createElement('span');
+    ic.className = 'check-icon';
+    if (siteHasAppIcon(s)) ic.innerHTML = appIconSvg(s.icon || guessIcon(s.url));
+    const nm = document.createElement('span');
+    nm.className = 'check-name';
+    nm.textContent = s.name;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = nt.apps[s.id] !== false;
+    cb.addEventListener('change', () => { nt.apps[s.id] = cb.checked; });
+    row.appendChild(ic);
+    row.appendChild(nm);
+    row.appendChild(cb);
     wrap.appendChild(row);
   }
 }
@@ -1336,12 +1381,24 @@ function updateNotifBadge() {
   b.hidden = !notifUnread;
 }
 
+function osNotifyAllowed(siteId) {
+  const nt = (state.settings && state.settings.notifications) || {};
+  if (nt.os === false) return false;
+  return !(nt.apps && nt.apps[siteId] === false);
+}
+
 function addNotification(site, n) {
   if (!n) return;
-  notifications.unshift({ id: ++notifSeq, site: site.name, title: n.title || '', body: n.body || '', ts: n.ts || Date.now() });
+  notifications.unshift({ id: ++notifSeq, siteId: site.id, site: site.name, title: n.title || '', body: n.body || '', ts: n.ts || Date.now() });
   if (notifications.length > 200) notifications.pop();
   if (!isNotifOpen()) { notifUnread++; updateNotifBadge(); }
   else renderNotifications();
+
+  // Mirror to a Windows toast (unless muted, or the app is already focused+active)
+  if (osNotifyAllowed(site.id) && !(document.hasFocus() && site.id === state.activeId)) {
+    const body = (n.title && n.body) ? (n.title + ' — ' + n.body) : (n.title || n.body || '');
+    api.notifyOs({ title: site.name, body, siteId: site.id });
+  }
 }
 
 function fmtTime(ts) {
@@ -1366,8 +1423,12 @@ function renderNotifications() {
     x.className = 'notif-dismiss';
     x.title = 'Dismiss';
     x.textContent = '\u00d7';
-    x.addEventListener('click', () => dismissNotification(n.id));
+    x.addEventListener('click', (e) => { e.stopPropagation(); dismissNotification(n.id); });
     row.appendChild(x);
+    if (n.siteId) {
+      row.classList.add('clickable');
+      row.addEventListener('click', () => { activateSite(n.siteId); hideNotifPanel(); });
+    }
     const top = document.createElement('div');
     top.className = 'notif-top';
     const src = document.createElement('span');
@@ -1441,6 +1502,7 @@ async function boot() {
   if (!state.settings.font) state.settings.font = 'system';
   if (!state.settings.profile) state.settings.profile = { name: '', avatar: null, avatarColor: null };
   if (!state.settings.updates) state.settings.updates = { autoCheck: true };
+  if (!state.settings.notifications) state.settings.notifications = { os: true, apps: {} };
 
   setTheme(state.settings.theme);
   applySidebar();

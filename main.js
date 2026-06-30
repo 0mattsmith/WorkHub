@@ -2,7 +2,7 @@
 
 const {
   app, BrowserWindow, Tray, Menu, nativeImage, ipcMain,
-  shell, session, screen, net, powerMonitor, dialog
+  shell, session, screen, net, powerMonitor, dialog, Notification
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -39,6 +39,7 @@ const DEFAULT_CONFIG = {
     collapsed: {},
     launchAtStartup: false,
     updates: { autoCheck: true },
+    notifications: { os: true, apps: {} },   // os = master toggle; apps[siteId]=false to mute
     sidebar: {
       dock: 'left',                      // 'left' | 'right' | 'top' | 'bottom'
       size: 248,                         // px — width (left/right) or height (top/bottom)
@@ -195,16 +196,22 @@ function smoothwallTarget() {
 }
 
 // Is the Smoothwall appliance even on this network? (quick TCP probe)
+// Tries the URL's port, then falls back to the other common port (80/443),
+// so it works whether the appliance answers on http or https.
 function probeReachable(cb) {
   const { host, port } = smoothwallTarget();
-  const socket = new tcp.Socket();
-  let done = false;
-  const finish = (ok) => { if (done) return; done = true; try { socket.destroy(); } catch (e) {} cb(ok); };
-  socket.setTimeout(2500);
-  socket.once('connect', () => finish(true));
-  socket.once('timeout', () => finish(false));
-  socket.once('error', () => finish(false));
-  try { socket.connect(port, host); } catch (e) { finish(false); }
+  const alt = port === 443 ? 80 : (port === 80 ? 443 : null);
+  const tryPort = (p, next) => {
+    const socket = new tcp.Socket();
+    let done = false;
+    const finish = (ok) => { if (done) return; done = true; try { socket.destroy(); } catch (e) {} ok ? cb(true) : next(); };
+    socket.setTimeout(2000);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+    try { socket.connect(p, host); } catch (e) { finish(false); }
+  };
+  tryPort(port, () => { if (alt) tryPort(alt, () => cb(false)); else cb(false); });
 }
 
 function checkSmoothwallStatus() {
@@ -550,6 +557,26 @@ ipcMain.handle('updates:install', () => {
   return true;
 });
 
+ipcMain.handle('notify:os', (_e, payload) => {
+  try {
+    if (!Notification.isSupported()) return false;
+    const n = new Notification({
+      title: (payload && payload.title) || 'WorkHub',
+      body: (payload && payload.body) || '',
+      icon: ICONS.app,
+      silent: false
+    });
+    n.on('click', () => {
+      showMainWindow();
+      if (mainWindow && !mainWindow.isDestroyed() && payload && payload.siteId) {
+        mainWindow.webContents.send('activate-site', payload.siteId);
+      }
+    });
+    n.show();
+    return true;
+  } catch (e) { return false; }
+});
+
 ipcMain.handle('workspace:export', async () => {
   const { canceled, filePath } = await dialog.showSaveDialog({
     title: 'Export WorkHub workspace',
@@ -595,6 +622,7 @@ ipcMain.handle('workspace:import', async () => {
 app.on('second-instance', () => { showMainWindow(); });
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') app.setAppUserModelId('com.workhub.app');  // proper Windows toast identity
   session.fromPartition('persist:workhub');
 
   createMainWindow();

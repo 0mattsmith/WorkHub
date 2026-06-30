@@ -508,3 +508,8 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after {
 .tab.drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }
 .section-items.drop-target, .section-header.drop-target { background: var(--accent-soft); border-radius: 8px; outline: 1px dashed var(--accent); outline-offset: -2px; }
 .app.locked .resize-handle { display: none; }
+
+/* Clickable notifications + per-app desktop toggles */
+.notif-item.clickable { cursor: pointer; }
+.notif-item.clickable:hover { border-color: var(--accent); }
+.notify-apps { display: flex; flex-direction: column; gap: 1px; margin-bottom: 6px; max-height: 220px; overflow-y: auto; }

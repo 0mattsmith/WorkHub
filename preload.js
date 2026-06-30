@@ -40,6 +40,14 @@ contextBridge.exposeInMainWorld('workhub', {
     return () => ipcRenderer.removeListener('updates:status', handler);
   },
 
+  // ---- desktop notifications ----
+  notifyOs:         (payload) => ipcRenderer.invoke('notify:os', payload),
+  onActivateSite:   (cb) => {
+    const handler = (_e, id) => cb(id);
+    ipcRenderer.on('activate-site', handler);
+    return () => ipcRenderer.removeListener('activate-site', handler);
+  },
+
   // ---- misc ----
   openExternal:     (url) => ipcRenderer.invoke('app:openExternal', url),
   setWindowTitle:   (title) => ipcRenderer.invoke('window:setTitle', title),
