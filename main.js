@@ -829,6 +829,8 @@ app.whenReady().then(() => {
   const launchUrl = process.argv.find((a) => typeof a === 'string' && a.indexOf('workhub://') === 0);
   if (launchUrl) setTimeout(() => handleAppProtocol(launchUrl), 1500);
   session.fromPartition('persist:workhub');
+  // Periodically flush cookies to disk so an unclean exit doesn't drop logins.
+  setInterval(() => { try { session.fromPartition('persist:workhub').cookies.flushStore(); } catch (e) {} }, 5 * 60 * 1000);
 
   createMainWindow();
   createTray();
@@ -850,7 +852,10 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => { isQuitting = true; });
+app.on('before-quit', () => {
+  isQuitting = true;
+  try { session.fromPartition('persist:workhub').cookies.flushStore(); } catch (e) {}  // persist logins
+});
 
 app.on('window-all-closed', () => {
   if (!config.settings.smoothwall.enabled && process.platform !== 'darwin') {

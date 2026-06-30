@@ -11,6 +11,11 @@
 
 const { ipcRenderer } = require('electron');
 
+// Ask the browser to keep this site's storage (cookies / localStorage /
+// IndexedDB) persistent, so logins aren't evicted under memory pressure and
+// you stay signed in.
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+
 // Alt + right-click on a hyperlink -> tell the host to show our menu.
 window.addEventListener('contextmenu', (e) => {
   if (!e.altKey) return;                              // only our gesture
