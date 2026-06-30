@@ -19,9 +19,11 @@ let sleepTimer = null;
 let webviewPreloadUrl = null;   // fetched from main (sandbox-safe)
 let dragId = null;              // id of the tab currently being dragged
 
-// Present embedded sites with a clean desktop-Chrome UA so apps like Slack/Teams
-// don't reject the browser (Slack refuses anything advertising "Electron").
-const WEBVIEW_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+// Present embedded sites with a clean, current desktop-Chrome UA so apps like
+// Slack/Teams don't reject the browser (Slack refuses anything advertising
+// "Electron", and some apps gate on Chrome version). Keep this roughly in step
+// with the Chromium your Electron version actually ships.
+const WEBVIEW_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36';
 
 function sidebarLocked() {
   return !!(state.settings && state.settings.sidebar && state.settings.sidebar.locked);
