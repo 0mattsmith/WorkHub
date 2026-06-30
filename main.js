@@ -2,7 +2,7 @@
 
 const {
   app, BrowserWindow, Tray, Menu, nativeImage, ipcMain,
-  shell, session, screen, net, powerMonitor, dialog, Notification
+  shell, session, screen, net, powerMonitor, dialog, Notification, safeStorage
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -64,7 +64,8 @@ const DEFAULT_CONFIG = {
       checkUrl: 'http://connectivitycheck.gstatic.com/generate_204',
       checkIntervalSeconds: 60
     }
-  }
+  },
+  slack: { clientId: '', redirectUri: 'https://0mattsmith.github.io/workhub/slack-callback.html' }
 };
 
 // Suggestions shown on the empty state. Purely cosmetic shortcuts.
@@ -503,7 +504,11 @@ function checkForUpdates() {
 // ---------------------------------------------------------------------------
 // IPC API (renderer <-> main)
 // ---------------------------------------------------------------------------
-ipcMain.handle('config:get', () => config);
+ipcMain.handle('config:get', () => {
+  const c = JSON.parse(JSON.stringify(config));
+  if (c.slack) { delete c.slack.secretEnc; delete c.slack.tokenEnc; }   // never expose secrets to the renderer
+  return c;
+});
 
 ipcMain.handle('config:getSuggestions', () => SITE_SUGGESTIONS);
 
@@ -575,6 +580,150 @@ ipcMain.handle('icon:fetch', async (_e, url) => {
       req.end();
     } catch (e) { finish(null); }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Slack — native OAuth (Stage 1: connect + secure token storage)
+// ---------------------------------------------------------------------------
+let slackPendingState = null;
+const SLACK_USER_SCOPES = 'channels:read,channels:history,groups:read,groups:history,im:read,im:history,mpim:read,mpim:history,users:read,chat:write';
+
+function slackEnc(text) {
+  try {
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      return 'enc:' + safeStorage.encryptString(text).toString('base64');
+    }
+  } catch (e) { /* fall through */ }
+  return 'raw:' + Buffer.from(text || '', 'utf8').toString('base64');
+}
+function slackDec(stored) {
+  if (!stored) return '';
+  try {
+    if (stored.startsWith('enc:')) return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'));
+    if (stored.startsWith('raw:')) return Buffer.from(stored.slice(4), 'base64').toString('utf8');
+  } catch (e) { /* ignore */ }
+  return '';
+}
+
+function slackStatus() {
+  const s = config.slack || {};
+  return {
+    connected: !!s.tokenEnc,
+    user: s.userName || null,
+    team: s.teamName || null,
+    hasCreds: !!(s.clientId && s.secretEnc),
+    clientId: s.clientId || '',
+    redirectUri: s.redirectUri || ''
+  };
+}
+function sendSlackStatus(extra) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('slack:status', Object.assign(slackStatus(), extra || {}));
+  }
+}
+
+function slackPost(url, formObj) {
+  return new Promise((resolve) => {
+    try {
+      const req = net.request({ method: 'POST', url });
+      req.setHeader('Content-Type', 'application/x-www-form-urlencoded');
+      const chunks = [];
+      req.on('response', (res) => {
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch (e) { resolve({ ok: false, error: 'bad_json' }); } });
+      });
+      req.on('error', () => resolve({ ok: false, error: 'network' }));
+      req.write(new URLSearchParams(formObj).toString());
+      req.end();
+    } catch (e) { resolve({ ok: false, error: String(e) }); }
+  });
+}
+function slackGet(url, token) {
+  return new Promise((resolve) => {
+    try {
+      const req = net.request({ method: 'GET', url });
+      req.setHeader('Authorization', 'Bearer ' + token);
+      const chunks = [];
+      req.on('response', (res) => {
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch (e) { resolve({ ok: false }); } });
+      });
+      req.on('error', () => resolve({ ok: false }));
+      req.end();
+    } catch (e) { resolve({ ok: false }); }
+  });
+}
+
+async function finishSlackOAuth(code, state) {
+  if (!code) { sendSlackStatus({ error: 'No authorization code returned.' }); return; }
+  if (slackPendingState && state !== slackPendingState) { sendSlackStatus({ error: 'State mismatch — please try again.' }); return; }
+  const s = config.slack || {};
+  const secret = slackDec(s.secretEnc);
+  if (!s.clientId || !secret) { sendSlackStatus({ error: 'Missing credentials.' }); return; }
+  const resp = await slackPost('https://slack.com/api/oauth.v2.access', {
+    client_id: s.clientId, client_secret: secret, code, redirect_uri: s.redirectUri
+  });
+  if (!resp.ok || !resp.authed_user || !resp.authed_user.access_token) {
+    sendSlackStatus({ error: 'Slack sign-in failed: ' + (resp.error || 'unknown') }); return;
+  }
+  const token = resp.authed_user.access_token;
+  config.slack = Object.assign({}, s, {
+    tokenEnc: slackEnc(token),
+    userId: resp.authed_user.id,
+    teamName: (resp.team && resp.team.name) || s.teamName || '',
+    connectedAt: Date.now()
+  });
+  const who = await slackGet('https://slack.com/api/auth.test', token);
+  if (who && who.ok) { config.slack.userName = who.user || config.slack.userName; if (who.team) config.slack.teamName = who.team; }
+  saveConfig(config);
+  slackPendingState = null;
+  showMainWindow();
+  sendSlackStatus();
+}
+
+function handleAppProtocol(url) {
+  try {
+    if (!url || url.indexOf('workhub://') !== 0) return;
+    if (url.indexOf('slack-callback') !== -1) {
+      const u = new URL(url);
+      finishSlackOAuth(u.searchParams.get('code'), u.searchParams.get('state'));
+    }
+  } catch (e) { /* ignore */ }
+}
+
+ipcMain.handle('slack:getStatus', () => slackStatus());
+ipcMain.handle('slack:setCreds', (_e, creds) => {
+  creds = creds || {};
+  config.slack = Object.assign({}, config.slack || {}, {
+    clientId: (creds.clientId || '').trim(),
+    redirectUri: (creds.redirectUri || '').trim()
+  });
+  if (creds.secret) config.slack.secretEnc = slackEnc(creds.secret.trim());
+  saveConfig(config);
+  return slackStatus();
+});
+ipcMain.handle('slack:connect', () => {
+  const s = config.slack || {};
+  if (!s.clientId || !s.secretEnc || !s.redirectUri) {
+    return { ok: false, error: 'Enter Client ID, Client Secret and Redirect URL first.' };
+  }
+  slackPendingState = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const u = 'https://slack.com/oauth/v2/authorize'
+    + '?client_id=' + encodeURIComponent(s.clientId)
+    + '&user_scope=' + encodeURIComponent(SLACK_USER_SCOPES)
+    + '&redirect_uri=' + encodeURIComponent(s.redirectUri)
+    + '&state=' + encodeURIComponent(slackPendingState);
+  shell.openExternal(u);
+  return { ok: true };
+});
+ipcMain.handle('slack:disconnect', () => {
+  if (config.slack) {
+    delete config.slack.tokenEnc;
+    delete config.slack.userName;
+    delete config.slack.userId;
+    saveConfig(config);
+  }
+  return slackStatus();
 });
 
 ipcMain.handle('window:setTitle', (_e, title) => {
@@ -657,10 +806,25 @@ ipcMain.handle('workspace:import', async () => {
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
-app.on('second-instance', () => { showMainWindow(); });
+app.on('second-instance', (event, argv) => {
+  const url = (argv || []).find((a) => typeof a === 'string' && a.indexOf('workhub://') === 0);
+  if (url) handleAppProtocol(url);
+  showMainWindow();
+});
+
+app.on('open-url', (event, url) => { event.preventDefault(); handleAppProtocol(url); });   // macOS
 
 app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.workhub.app');  // proper Windows toast identity
+  try {
+    if (process.defaultApp && process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient('workhub', process.execPath, [path.resolve(process.argv[1])]);
+    } else {
+      app.setAsDefaultProtocolClient('workhub');
+    }
+  } catch (e) { /* ignore */ }
+  const launchUrl = process.argv.find((a) => typeof a === 'string' && a.indexOf('workhub://') === 0);
+  if (launchUrl) setTimeout(() => handleAppProtocol(launchUrl), 1500);
   session.fromPartition('persist:workhub');
 
   createMainWindow();

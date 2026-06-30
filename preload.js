@@ -48,6 +48,17 @@ contextBridge.exposeInMainWorld('workhub', {
     return () => ipcRenderer.removeListener('activate-site', handler);
   },
 
+  // ---- slack (native OAuth) ----
+  slackStatus:      () => ipcRenderer.invoke('slack:getStatus'),
+  slackSetCreds:    (creds) => ipcRenderer.invoke('slack:setCreds', creds),
+  slackConnect:     () => ipcRenderer.invoke('slack:connect'),
+  slackDisconnect:  () => ipcRenderer.invoke('slack:disconnect'),
+  onSlackStatus:    (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('slack:status', handler);
+    return () => ipcRenderer.removeListener('slack:status', handler);
+  },
+
   // ---- misc ----
   fetchIcon:        (url) => ipcRenderer.invoke('icon:fetch', url),
   openExternal:     (url) => ipcRenderer.invoke('app:openExternal', url),

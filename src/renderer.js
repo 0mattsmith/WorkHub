@@ -834,6 +834,7 @@ function openSettings() {
   refreshUpdateUI();
   $('osNotifyToggle').checked = !(s.notifications && s.notifications.os === false);
   renderNotifyApps();
+  refreshSlackUI();
   $('settingsModal').hidden = false;
 }
 
@@ -1098,6 +1099,27 @@ function wireEvents() {
     if (!state.settings.notifications) state.settings.notifications = { os: true, apps: {} };
     state.settings.notifications.os = $('osNotifyToggle').checked;
   });
+
+  $('slackSaveCreds').addEventListener('click', async () => {
+    const st = await api.slackSetCreds({
+      clientId: $('slackClientId').value,
+      secret: $('slackSecret').value,
+      redirectUri: $('slackRedirect').value
+    });
+    $('slackSecret').value = '';
+    updateSlackUI(st);
+    showToast('Slack credentials saved');
+  });
+  $('slackConnectBtn').addEventListener('click', async () => {
+    const r = await api.slackConnect();
+    if (!r || !r.ok) showToast(r && r.error ? r.error : 'Could not start Slack sign-in');
+    else showToast('Opening Slack sign-in…');
+  });
+  $('slackDisconnectBtn').addEventListener('click', async () => {
+    updateSlackUI(await api.slackDisconnect());
+    showToast('Slack disconnected');
+  });
+  api.onSlackStatus(updateSlackUI);
 
   // Right-click an empty part of the sidebar -> quick Compact toggle
   const sidebarEl = document.getElementById('sidebar');
@@ -1415,6 +1437,35 @@ function handleUpdateStatus(d) {
     case 'unsupported': setUpdateStatus("Auto-update isn't available in this build."); break;
     case 'error': setUpdateStatus('Update check failed: ' + (d.message || 'unknown')); break;
   }
+}
+
+/* ---- Slack (native OAuth) ---- */
+function updateSlackUI(st) {
+  if (!st) return;
+  const line = $('slackStatusLine'), sub = $('slackStatusSub');
+  const dis = $('slackDisconnectBtn'), con = $('slackConnectBtn');
+  if (st.connected) {
+    if (line) line.textContent = 'Connected' + (st.user ? ' as @' + st.user : '');
+    if (sub) sub.textContent = st.team ? ('Workspace: ' + st.team) : 'Slack account linked.';
+    if (dis) dis.hidden = false;
+    if (con) con.textContent = 'Reconnect';
+  } else {
+    if (line) line.textContent = 'Not connected';
+    if (sub) sub.textContent = st.error ? st.error : 'Enter your Slack app credentials, save, then connect.';
+    if (dis) dis.hidden = true;
+    if (con) con.textContent = 'Connect';
+  }
+  if (st.error) showToast('Slack: ' + st.error);
+}
+
+async function refreshSlackUI() {
+  try {
+    const st = await api.slackStatus();
+    $('slackClientId').value = st.clientId || '';
+    $('slackRedirect').value = st.redirectUri || 'https://0mattsmith.github.io/workhub/slack-callback.html';
+    $('slackSecret').value = '';
+    updateSlackUI(st);
+  } catch (e) { /* ignore */ }
 }
 
 /* ---- Notifications ---- */

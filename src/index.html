@@ -315,6 +315,34 @@
       </label>
 
       <hr class="divider" />
+      <h3 class="section-h">Slack <span class="badge-lite">Native</span></h3>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong id="slackStatusLine">Not connected</strong><span id="slackStatusSub">Enter your Slack app credentials, save, then connect.</span></div>
+        <div class="inline-add">
+          <button class="text-btn" id="slackDisconnectBtn" hidden>Disconnect</button>
+          <button class="text-btn accent" id="slackConnectBtn">Connect</button>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>Client ID</span>
+        <input type="text" id="slackClientId" placeholder="e.g. 1234567890.123..." autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>Client secret <span style="color:var(--text-faint)">(stored locally, never committed)</span></span>
+        <input type="password" id="slackSecret" placeholder="leave blank to keep the saved one" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>Redirect URL (must exactly match your Slack app)</span>
+        <input type="text" id="slackRedirect" placeholder="https://you.github.io/workhub/slack-callback.html" autocomplete="off" />
+      </label>
+      <div class="setting-row">
+        <div class="setting-text"><span>Save credentials first, then Connect — a browser opens for Slack sign-in and returns to WorkHub.</span></div>
+        <button class="text-btn accent" id="slackSaveCreds">Save credentials</button>
+      </div>
+
+      <hr class="divider" />
       <h3 class="section-h">Workspace</h3>
 
       <div class="setting-row">
