@@ -23,7 +23,7 @@ let dragId = null;              // id of the tab currently being dragged
 // Slack/Teams don't reject the browser (Slack refuses anything advertising
 // "Electron", and some apps gate on Chrome version). Keep this roughly in step
 // with the Chromium your Electron version actually ships.
-const WEBVIEW_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36';
+const WEBVIEW_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 
 function sidebarLocked() {
   return !!(state.settings && state.settings.sidebar && state.settings.sidebar.locked);
@@ -383,11 +383,11 @@ function ensureWebview(site) {
   wv.addEventListener('did-navigate-in-page', () => { if (site.id === state.activeId) syncNav(); });
   wv.addEventListener('page-title-updated', (e) => {
     if (site.id === state.activeId) api.setWindowTitle(e.title || site.name);
-    const c = parseBadge(e.title);
-    meta(site.id).badge = c;
-    updateTabBadge(site.id, c);
+    meta(site.id).badge = parseBadge(e.title);
+    updateTabBadge(site.id, effectiveBadge(site.id));
   });
   wv.addEventListener('page-favicon-updated', (e) => {
+    if (site.iconFrozen) return;                 // user pinned this icon — don't let the page change it
     if (e.favicons && e.favicons.length && !siteHasAppIcon(site)) {
       const best = e.favicons[e.favicons.length - 1];   // usually the highest-res one
       setTabFavicon(site.id, best);
@@ -505,6 +505,12 @@ function parseBadge(title) {
   return 0;
 }
 
+// Highest of: count parsed from the page title, and unread captured notifications.
+function effectiveBadge(id) {
+  const m = meta(id);
+  return Math.max(m.badge || 0, m.unread || 0);
+}
+
 function updateTabBadge(id, count) {
   const tab = document.querySelector(`.tab[data-id="${id}"]`);
   if (!tab) return;
@@ -547,6 +553,7 @@ function makeTab(site) {
   tab.appendChild(badge);
   tab.appendChild(edit);
   tab.addEventListener('click', () => activateSite(site.id));
+  tab.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); showTabMenu(e.clientX, e.clientY, site); });
 
   tab.draggable = !sidebarLocked();
   tab.addEventListener('dragstart', (e) => {
@@ -722,6 +729,8 @@ function activateSite(id) {
   state.activeId = id;
   meta(id).lastActive = Date.now();
   meta(id).asleep = false;
+  meta(id).unread = 0;                    // opening the app clears its unread bubble
+  updateTabBadge(id, effectiveBadge(id));
 
   ensureWebview(site);
   for (const [wid, wv] of webviews) wv.classList.toggle('active', wid === id);
@@ -1405,6 +1414,53 @@ function showAddressBarMenu(x, y) {
   menu.style.top = Math.max(8, my) + 'px';
 }
 
+function showTabMenu(x, y, site) {
+  hideLinkMenu();
+  const frozen = !!site.iconFrozen;
+  const items = [
+    {
+      label: frozen ? 'Unfreeze icon' : 'Freeze icon',
+      svg: frozen
+        ? '<path d="M6 10V7a6 6 0 0 1 12 0v3" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="4" y="10" width="16" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/>'
+        : '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+      action: async () => {
+        site.iconFrozen = !frozen;
+        if (site.iconFrozen && !site.favicon && !siteHasAppIcon(site)) {
+          await cacheSiteIcon(site, faviconUrl(site.url));   // capture the current icon so it can't vanish
+        }
+        schedulePersist();
+        showToast(site.iconFrozen ? 'Icon frozen' : 'Icon unfrozen');
+      }
+    },
+    {
+      label: 'Edit…',
+      svg: '<path d="M4 20h4l10-10-4-4L4 16v4ZM14 6l4 4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+      action: () => openSiteModal(site)
+    }
+  ];
+
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.id = 'ctxMenu';
+  for (const it of items) {
+    const el = document.createElement('button');
+    el.className = 'ctx-item';
+    el.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16">${it.svg}</svg>`;
+    const span = document.createElement('span');
+    span.textContent = it.label;
+    el.appendChild(span);
+    el.addEventListener('click', () => { it.action(); hideLinkMenu(); });
+    menu.appendChild(el);
+  }
+  document.body.appendChild(menu);
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  let mx = x, my = y;
+  if (mx + mw > window.innerWidth - 8) mx = window.innerWidth - mw - 8;
+  if (my + mh > window.innerHeight - 8) my = window.innerHeight - mh - 8;
+  menu.style.left = Math.max(8, mx) + 'px';
+  menu.style.top = Math.max(8, my) + 'px';
+}
+
 function showLinkMenu(payload, wv) {
   hideLinkMenu();
   if (!payload || !payload.href) return;
@@ -1482,19 +1538,19 @@ function showToast(message) {
 }
 
 /* ---- Notification snooze ---- */
-function fmtTime(ts) {
+function fmtClock(ts) {
   try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; }
 }
 function updateSnoozeUI(until) {
   const active = until && until > Date.now();
   const statusEl = $('snoozeStatus');
-  if (statusEl) statusEl.textContent = active ? ('Snoozed until ' + fmtTime(until) + ' — no desktop toasts.') : 'Off — toasts are showing.';
+  if (statusEl) statusEl.textContent = active ? ('Snoozed until ' + fmtClock(until) + ' — no desktop toasts.') : 'Off — toasts are showing.';
   const sel = $('snoozeSelect');
   if (sel && !active) sel.value = '0';
   const note = $('notifSnoozeNote');
   if (note) {
     note.hidden = !active;
-    note.textContent = active ? ('Snoozed until ' + fmtTime(until)) : '';
+    note.textContent = active ? ('Snoozed until ' + fmtClock(until)) : '';
   }
 }
 async function refreshSnoozeUI() {
@@ -1721,6 +1777,12 @@ function addNotification(site, n) {
   if (notifications.length > 200) notifications.pop();
   if (!isNotifOpen()) { notifUnread++; updateNotifBadge(); }
   else renderNotifications();
+
+  // Red count bubble on the app's sidebar icon (unless you're already on it).
+  if (!(document.hasFocus() && site.id === state.activeId)) {
+    meta(site.id).unread = (meta(site.id).unread || 0) + 1;
+    updateTabBadge(site.id, effectiveBadge(site.id));
+  }
 
   // Mirror to a Windows toast (unless muted, or the app is already focused+active)
   if (osNotifyAllowed(site.id) && !(document.hasFocus() && site.id === state.activeId)) {

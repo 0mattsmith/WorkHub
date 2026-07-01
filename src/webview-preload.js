@@ -16,6 +16,38 @@ const { ipcRenderer } = require('electron');
 // you stay signed in.
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
 
+// Spoof User-Agent Client Hints in the page's own world so apps like Slack
+// (which read navigator.userAgentData, not just the UA string) see a current
+// Chrome and stop showing "this browser is no longer supported". Runs at
+// document-start via an injected <script> so it lands before the app's checks.
+try {
+  const V = '137';
+  const s = document.createElement('script');
+  s.textContent = '(' + function (v) {
+    try {
+      var brands = [
+        { brand: 'Not/A)Brand', version: '24' },
+        { brand: 'Chromium', version: v },
+        { brand: 'Google Chrome', version: v }
+      ];
+      var data = {
+        brands: brands, mobile: false, platform: 'Windows',
+        getHighEntropyValues: function () {
+          return Promise.resolve({
+            brands: brands, mobile: false, platform: 'Windows', platformVersion: '15.0.0',
+            architecture: 'x86', bitness: '64', model: '', uaFullVersion: v + '.0.0.0',
+            fullVersionList: brands.map(function (b) { return { brand: b.brand, version: b.version + '.0.0.0' }; })
+          });
+        },
+        toJSON: function () { return { brands: brands, mobile: false, platform: 'Windows' }; }
+      };
+      Object.defineProperty(navigator, 'userAgentData', { get: function () { return data; }, configurable: true });
+    } catch (e) {}
+  }.toString() + ')("' + V + '");';
+  (document.documentElement || document.head || document).appendChild(s);
+  s.remove();
+} catch (e) {}
+
 // Alt + right-click on a hyperlink -> tell the host to show our menu.
 window.addEventListener('contextmenu', (e) => {
   if (!e.altKey) return;                              // only our gesture
