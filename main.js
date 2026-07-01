@@ -41,6 +41,7 @@ const DEFAULT_CONFIG = {
     collapsed: {},
     launchAtStartup: false,
     exportIncludesWidgets: false,        // include sticky notes + to-do lists in workspace export
+    useSystemFrame: false,               // true = OS native window frame; false = WorkHub's custom titlebar
     passwords: { enabled: true, autofill: true },   // remember + auto-fill site logins (encrypted)
     updates: { autoCheck: true, autoInstall: true },   // autoInstall: download + restart to update with no wizard
     notifications: { os: true, apps: {}, snoozeUntil: 0 },   // os = master toggle; apps[siteId]=false to mute; snoozeUntil = suppress OS toasts until this time
@@ -445,11 +446,14 @@ function showMainWindow() {
 }
 
 function createMainWindow() {
-  mainWindow = new BrowserWindow({
+  const isMac = process.platform === 'darwin';
+  const useSystemFrame = !!config.settings.useSystemFrame;
+  const opts = {
     width: 1280,
     height: 820,
     minWidth: 820,
     minHeight: 560,
+    show: false,                        // reveal once maximized to avoid a flash
     backgroundColor: config.settings.theme === 'light' ? '#f8fafc' : '#0f172a',
     title: 'WorkHub',
     icon: ICONS.app,
@@ -462,7 +466,17 @@ function createMainWindow() {
       backgroundThrottling: true,       // throttle timers when window hidden
       spellcheck: false                 // no dictionary download / overhead
     }
-  });
+  };
+  if (!useSystemFrame) {
+    if (isMac) { opts.titleBarStyle = 'hiddenInset'; opts.trafficLightPosition = { x: 12, y: 14 }; } // keep native traffic lights
+    else { opts.frame = false; }        // Windows/Linux: draw our own titlebar
+  }
+  mainWindow = new BrowserWindow(opts);
+
+  mainWindow.once('ready-to-show', () => { mainWindow.maximize(); mainWindow.show(); });   // start maximized
+  const sendMax = () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('window:maxchange', mainWindow.isMaximized()); };
+  mainWindow.on('maximize', sendMax);
+  mainWindow.on('unmaximize', sendMax);
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 
@@ -843,6 +857,20 @@ ipcMain.handle('window:setTitle', (_e, title) => {
   }
   return true;
 });
+
+// ---- custom titlebar window controls ----
+ipcMain.handle('window:chrome', () => ({
+  platform: process.platform,
+  custom: !config.settings.useSystemFrame,
+  maximized: mainWindow ? mainWindow.isMaximized() : true
+}));
+ipcMain.handle('window:minimize', () => { if (mainWindow) mainWindow.minimize(); return true; });
+ipcMain.handle('window:toggleMaximize', () => {
+  if (!mainWindow) return false;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize(); else mainWindow.maximize();
+  return mainWindow.isMaximized();
+});
+ipcMain.handle('window:close', () => { if (mainWindow) mainWindow.close(); return true; });
 
 ipcMain.handle('app:webviewPreloadUrl', () => {
   return pathToFileURL(path.join(__dirname, 'src', 'webview-preload.js')).href;

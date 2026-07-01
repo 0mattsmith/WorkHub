@@ -8,6 +8,20 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div class="titlebar" id="titlebar">
+    <div class="titlebar-title" id="titlebarTitle">WorkHub</div>
+    <div class="win-controls" id="winControls">
+      <button class="win-btn" id="winMin" title="Minimize" aria-label="Minimize">
+        <svg viewBox="0 0 12 12" width="11" height="11"><path d="M2 6h8" stroke="currentColor" stroke-width="1.1"/></svg>
+      </button>
+      <button class="win-btn" id="winMax" title="Maximize" aria-label="Maximize">
+        <svg viewBox="0 0 12 12" width="11" height="11"><rect x="2.2" y="2.2" width="7.6" height="7.6" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>
+      </button>
+      <button class="win-btn win-close" id="winClose" title="Close" aria-label="Close">
+        <svg viewBox="0 0 12 12" width="11" height="11"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.1"/></svg>
+      </button>
+    </div>
+  </div>
   <div class="app" data-dock="left">
     <!-- ===================== Sidebar ===================== -->
     <aside class="sidebar" id="sidebar">
@@ -454,6 +468,10 @@
       <div class="setting-row">
         <div class="setting-text"><strong>Launch at startup</strong><span>Open WorkHub automatically when you sign in.</span></div>
         <label class="switch"><input type="checkbox" id="startupToggle" /><span class="slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <div class="setting-text"><strong>Use system frames &amp; borders</strong><span>Use your operating system's window frame instead of WorkHub's custom titlebar. Restart required.</span></div>
+        <label class="switch"><input type="checkbox" id="systemFrameToggle" /><span class="slider"></span></label>
       </div>
       <div class="setting-row">
         <div class="setting-text"><strong>Reset all sites</strong><span>Removes every pinned site and returns to the empty state.</span></div>

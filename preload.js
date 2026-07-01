@@ -80,6 +80,18 @@ contextBridge.exposeInMainWorld('workhub', {
     return () => ipcRenderer.removeListener('slack:status', handler);
   },
 
+  // ---- custom titlebar / window controls ----
+  platform:         process.platform,
+  getWindowChrome:  () => ipcRenderer.invoke('window:chrome'),
+  winMinimize:      () => ipcRenderer.invoke('window:minimize'),
+  winToggleMaximize:() => ipcRenderer.invoke('window:toggleMaximize'),
+  winClose:         () => ipcRenderer.invoke('window:close'),
+  onMaxChange:      (cb) => {
+    const handler = (_e, isMax) => cb(isMax);
+    ipcRenderer.on('window:maxchange', handler);
+    return () => ipcRenderer.removeListener('window:maxchange', handler);
+  },
+
   // ---- misc ----
   fetchIcon:        (url) => ipcRenderer.invoke('icon:fetch', url),
   openExternal:     (url) => ipcRenderer.invoke('app:openExternal', url),

@@ -53,7 +53,33 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.app { display: flex; height: 100vh; }
+body { display: flex; flex-direction: column; }
+.app { display: flex; flex: 1 1 auto; min-height: 0; }
+
+/* ===========================================================================
+   Custom titlebar (frameless window)
+   =========================================================================== */
+.titlebar {
+  height: 34px; flex-shrink: 0; display: flex; align-items: center;
+  background: var(--bg-elev); border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag; user-select: none; position: relative; z-index: 30;
+}
+.titlebar-title { font-size: 12px; font-weight: 600; color: var(--text-dim); padding-left: 12px; letter-spacing: .2px; }
+.win-controls { margin-left: auto; display: flex; align-self: stretch; -webkit-app-region: no-drag; }
+.win-btn {
+  width: 46px; border: none; background: transparent; color: var(--text-dim);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background .1s, color .1s;
+}
+.win-btn:hover { background: var(--hover); color: var(--text); }
+.win-close:hover { background: #e81123; color: #fff; }
+
+/* macOS: native traffic lights are shown, so hide our buttons and leave room */
+body.mac .titlebar { height: 30px; }
+body.mac .win-controls { display: none; }
+body.mac .titlebar-title { padding-left: 80px; }
+
+/* System-frame mode: no custom titlebar at all */
+body.system-frame .titlebar { display: none; }
 
 /* ===========================================================================
    Sidebar

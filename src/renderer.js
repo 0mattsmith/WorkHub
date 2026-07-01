@@ -845,6 +845,7 @@ function openSettings() {
   $('lockToggle').checked = !!sb.locked;
   $('addressBarToggle').checked = s.showAddressBar !== false;
   $('exportWidgetsToggle').checked = !!s.exportIncludesWidgets;
+  $('systemFrameToggle').checked = !!s.useSystemFrame;
 
   $('sleepToggle').checked = !!perf.sleepInactiveTabs;
   $('sleepMinutes').value = String(perf.sleepAfterMinutes != null ? perf.sleepAfterMinutes : 15);
@@ -900,6 +901,7 @@ async function saveSettings() {
     launchAtStartup: $('startupToggle').checked,
     showAddressBar: $('addressBarToggle').checked,
     exportIncludesWidgets: $('exportWidgetsToggle').checked,
+    useSystemFrame: $('systemFrameToggle').checked,
     passwords: {
       enabled: $('pwEnabledToggle').checked,
       autofill: $('pwAutofillToggle').checked
@@ -1020,6 +1022,9 @@ function wireEvents() {
   $('snoozeSelect').addEventListener('change', onSnoozeSelectChange);
   api.onSnooze(updateSnoozeUI);
   refreshSnoozeUI();
+
+  initTitlebar();
+  $('systemFrameToggle').addEventListener('change', () => { showToast('Restart WorkHub to apply the window frame change.'); });
   $('saveSettingsBtn').addEventListener('click', saveSettings);
   $('closeSettingsBtn').addEventListener('click', closeSettings);
   $('resetSitesBtn').addEventListener('click', resetSites);
@@ -1535,6 +1540,32 @@ function showToast(message) {
   toast.classList.add('show');
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
+}
+
+/* ---- Custom titlebar / window controls ---- */
+function setMaxIcon(isMax) {
+  document.body.classList.toggle('maximized', !!isMax);
+  const max = $('winMax');
+  if (!max) return;
+  max.title = isMax ? 'Restore' : 'Maximize';
+  max.innerHTML = isMax
+    ? '<svg viewBox="0 0 12 12" width="11" height="11"><rect x="3" y="1.4" width="6.2" height="6.2" fill="none" stroke="currentColor" stroke-width="1.1"/><rect x="1.4" y="3" width="6.2" height="6.2" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>'
+    : '<svg viewBox="0 0 12 12" width="11" height="11"><rect x="2.2" y="2.2" width="7.6" height="7.6" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>';
+}
+async function initTitlebar() {
+  const min = $('winMin'), max = $('winMax'), close = $('winClose');
+  if (min) min.addEventListener('click', () => api.winMinimize());
+  if (max) max.addEventListener('click', () => api.winToggleMaximize());
+  if (close) close.addEventListener('click', () => api.winClose());
+  try {
+    const c = await api.getWindowChrome();
+    if (c) {
+      document.body.classList.toggle('mac', c.platform === 'darwin');
+      document.body.classList.toggle('system-frame', !c.custom);
+      setMaxIcon(!!c.maximized);
+    }
+  } catch (e) { /* ignore */ }
+  if (api.onMaxChange) api.onMaxChange(setMaxIcon);
 }
 
 /* ---- Notification snooze ---- */
