@@ -401,6 +401,10 @@ function ensureWebview(site) {
     else if (e.channel === 'workhub-notification') addNotification(site, e.args[0]);
     else if (e.channel === 'workhub-cred-captured') maybeOfferSavePassword(e.args[0]);
     else if (e.channel === 'workhub-cred-request') handleCredFillRequest(wv, e.args[0]);
+    else if (e.channel === 'workhub-page-summary') {
+      const s = e.args[0];
+      if (s && typeof s.summary === 'string') { site.lastSummary = s.summary; schedulePersist(); }
+    }
   });
   return wv;
 }
@@ -1142,6 +1146,16 @@ function wireEvents() {
   $('notifBtn').addEventListener('click', toggleNotifications);
   $('notifClose').addEventListener('click', hideNotifPanel);
   $('notifClear').addEventListener('click', clearNotifications);
+  $('notifMissed').addEventListener('click', () => { hideNotifPanel(); showMissed(); });
+
+  $('whatsnewClose').addEventListener('click', () => { $('whatsnewModal').hidden = true; });
+  $('whatsnewModal').addEventListener('click', (e) => { if (e.target.id === 'whatsnewModal') $('whatsnewModal').hidden = true; });
+  $('missedClose').addEventListener('click', closeMissed);
+  $('missedModal').addEventListener('click', (e) => { if (e.target.id === 'missedModal') closeMissed(); });
+  $('missedOnLaunchToggle').addEventListener('change', () => {
+    state.settings.showMissedOnLaunch = $('missedOnLaunchToggle').checked;
+    api.setSettings({ showMissedOnLaunch: $('missedOnLaunchToggle').checked });
+  });
 
   // Navbar
   $('backBtn').addEventListener('click', () => { const w = webviews.get(state.activeId); if (w && w.canGoBack()) w.goBack(); });
@@ -1802,12 +1816,24 @@ function osNotifyAllowed(siteId) {
   return !(nt.apps && nt.apps[siteId] === false);
 }
 
+let notifLogTimer = null;
+function persistNotifLog() {
+  clearTimeout(notifLogTimer);
+  notifLogTimer = setTimeout(() => { try { api.setNotifLog(notifications); } catch (e) {} }, 500);
+}
+function recomputeUnread() {
+  notifUnread = notifications.filter((n) => !n.seen).length;
+  updateNotifBadge();
+}
+
 function addNotification(site, n) {
   if (!n) return;
-  notifications.unshift({ id: ++notifSeq, siteId: site.id, site: site.name, title: n.title || '', body: n.body || '', ts: n.ts || Date.now() });
-  if (notifications.length > 200) notifications.pop();
-  if (!isNotifOpen()) { notifUnread++; updateNotifBadge(); }
-  else renderNotifications();
+  const item = { id: ++notifSeq, siteId: site.id, site: site.name, title: n.title || '', body: n.body || '', ts: n.ts || Date.now(), seen: false };
+  notifications.unshift(item);
+  if (notifications.length > 300) notifications.pop();
+  if (isNotifOpen()) { item.seen = true; renderNotifications(); }
+  recomputeUnread();
+  persistNotifLog();
 
   // Red count bubble on the app's sidebar icon (unless you're already on it).
   if (!(document.hasFocus() && site.id === state.activeId)) {
@@ -1882,8 +1908,9 @@ function toggleNotifications() {
   p.classList.toggle('mac', /Mac/i.test(navigator.platform || navigator.userAgent || ''));
   renderNotifications();
   p.hidden = false;
-  notifUnread = 0;
-  updateNotifBadge();
+  notifications.forEach((n) => { n.seen = true; });   // opening the panel marks everything read
+  recomputeUnread();
+  persistNotifLog();
   const btn = document.getElementById('notifBtn');
   const r = btn ? btn.getBoundingClientRect() : { right: 60, left: 0, top: 80 };
   const pw = p.offsetWidth, ph = p.offsetHeight;
@@ -1900,14 +1927,113 @@ function toggleNotifications() {
 function dismissNotification(id) {
   const i = notifications.findIndex((n) => n.id === id);
   if (i >= 0) notifications.splice(i, 1);
+  recomputeUnread();
+  persistNotifLog();
   renderNotifications();
 }
 
 function clearNotifications() {
   notifications.length = 0;
-  notifUnread = 0;
-  updateNotifBadge();
+  recomputeUnread();
+  persistNotifLog();
   renderNotifications();
+}
+
+/* ===========================================================================
+   What's New (after an update)  +  What have I missed? (on launch)
+   =========================================================================== */
+function cmpVer(a, b) {
+  const pa = String(a || '0').split('.').map(Number), pb = String(b || '0').split('.').map(Number);
+  for (let i = 0; i < 3; i++) { if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0); }
+  return 0;
+}
+
+async function maybeShowWhatsNew() {
+  let current = '';
+  try { current = (await api.getUpdateInfo()).version || ''; } catch (e) {}
+  if (!current) return;
+  const last = state.settings.lastSeenVersion || '';
+  if (!last) { state.settings.lastSeenVersion = current; api.setSettings({ lastSeenVersion: current }); return; }  // first run — don't show
+  if (cmpVer(current, last) <= 0) return;
+  let log = [];
+  try { log = await api.getChangelog(); } catch (e) {}
+  const entries = log.filter((e) => cmpVer(e.version, last) > 0 && cmpVer(e.version, current) <= 0);
+  state.settings.lastSeenVersion = current;
+  api.setSettings({ lastSeenVersion: current });
+  if (!entries.length) return;
+  const body = $('whatsnewBody');
+  if (!body) return;
+  body.innerHTML = '';
+  for (const e of entries) {
+    const h = document.createElement('h3'); h.className = 'wn-ver'; h.textContent = 'Version ' + e.version;
+    body.appendChild(h);
+    const ul = document.createElement('ul'); ul.className = 'wn-list';
+    for (const line of e.lines) { const li = document.createElement('li'); li.textContent = line; ul.appendChild(li); }
+    body.appendChild(ul);
+  }
+  $('whatsnewModal').hidden = false;
+}
+
+function missedGroups() {
+  const map = new Map();
+  for (const n of notifications) {
+    if (n.seen) continue;
+    if (!map.has(n.siteId)) map.set(n.siteId, { site: n.site, siteId: n.siteId, items: [] });
+    map.get(n.siteId).items.push(n);
+  }
+  return [...map.values()];
+}
+
+function maybeShowMissed() {
+  if (state.settings.showMissedOnLaunch === false) return;
+  if (!missedGroups().length) return;
+  showMissed();
+}
+
+function showMissed() {
+  const body = $('missedBody');
+  if (!body) return;
+  const groups = missedGroups();
+  body.innerHTML = '';
+  if (!groups.length) {
+    body.innerHTML = '<div class="notif-empty">You’re all caught up.</div>';
+  } else {
+    for (const g of groups) {
+      const card = document.createElement('div');
+      card.className = 'missed-card';
+      const head = document.createElement('div');
+      head.className = 'missed-card-head';
+      const nm = document.createElement('strong'); nm.textContent = g.site || 'App';
+      const cnt = document.createElement('span'); cnt.className = 'missed-count'; cnt.textContent = g.items.length;
+      head.appendChild(nm); head.appendChild(cnt);
+      if (g.siteId) { head.classList.add('clickable'); head.addEventListener('click', () => { activateSite(g.siteId); closeMissed(); }); }
+      card.appendChild(head);
+      const site = state.sites.find((s) => s.id === g.siteId);
+      if (site && site.lastSummary) {
+        const sm = document.createElement('div'); sm.className = 'missed-summary'; sm.textContent = site.lastSummary;
+        card.appendChild(sm);
+      }
+      const ul = document.createElement('ul'); ul.className = 'missed-items';
+      for (const it of g.items.slice(0, 6)) {
+        const li = document.createElement('li');
+        li.textContent = (it.title || '') + (it.body ? ' — ' + it.body : '');
+        ul.appendChild(li);
+      }
+      if (g.items.length > 6) { const li = document.createElement('li'); li.className = 'missed-more'; li.textContent = '+' + (g.items.length - 6) + ' more'; ul.appendChild(li); }
+      card.appendChild(ul);
+      body.appendChild(card);
+    }
+  }
+  const tog = $('missedOnLaunchToggle');
+  if (tog) tog.checked = state.settings.showMissedOnLaunch !== false;
+  $('missedModal').hidden = false;
+}
+
+function closeMissed() {
+  $('missedModal').hidden = true;
+  notifications.forEach((n) => { n.seen = true; });   // reviewing the digest counts as seen
+  recomputeUnread();
+  persistNotifLog();
 }
 
 /* ===========================================================================
@@ -1935,12 +2061,21 @@ async function boot() {
   const suggestions = await api.getSuggestions();
   renderSuggestions(suggestions);
 
+  if (Array.isArray(cfg.notifLog) && cfg.notifLog.length) {
+    notifications.push(...cfg.notifLog);
+    notifSeq = notifications.reduce((m, n) => Math.max(m, n.id || 0), 0);
+    recomputeUnread();
+  }
+
   wireEvents();
   renderTabs();
   updateEmptyState();
   updateSmoothwallDot(await api.getSmoothwallStatus());
 
   if (state.sites[0]) activateSite(state.sites[0].id);
+
+  await maybeShowWhatsNew();   // after an update
+  maybeShowMissed();           // launch digest
 }
 
 boot();

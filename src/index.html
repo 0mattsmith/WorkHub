@@ -498,7 +498,33 @@
       <button class="notif-close" id="notifClose" title="Close" aria-label="Close"></button>
     </div>
     <div class="notif-list" id="notifList"></div>
-    <div class="notif-foot"><button class="text-btn" id="notifClear">Clear all</button></div>
+    <div class="notif-foot">
+      <button class="text-btn" id="notifMissed">What have I missed?</button>
+      <span class="spacer"></span>
+      <button class="text-btn" id="notifClear">Clear all</button>
+    </div>
+  </div>
+
+  <!-- What's New (after an update) -->
+  <div class="modal-overlay" id="whatsnewModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="whatsnewTitle">
+      <h2 id="whatsnewTitle">What's New in WorkHub</h2>
+      <div class="whatsnew-body" id="whatsnewBody"></div>
+      <div class="modal-actions"><span class="spacer"></span><button class="primary-btn" id="whatsnewClose">Got it</button></div>
+    </div>
+  </div>
+
+  <!-- What have I missed? (launch digest) -->
+  <div class="modal-overlay" id="missedModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="missedTitle">
+      <h2 id="missedTitle">What have you missed?</h2>
+      <div class="missed-body" id="missedBody"></div>
+      <div class="modal-actions">
+        <label class="missed-launch-toggle"><input type="checkbox" id="missedOnLaunchToggle" /> Show on launch</label>
+        <span class="spacer"></span>
+        <button class="primary-btn" id="missedClose">Close</button>
+      </div>
+    </div>
   </div>
 
   <script src="renderer.js"></script>

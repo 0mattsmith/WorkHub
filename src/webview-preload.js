@@ -171,4 +171,20 @@ try {
   window.addEventListener('load', requestFill);
   setTimeout(requestFill, 1200);
   setTimeout(requestFill, 3000);
+
+  // Best-effort one-line "what's here" summary for the launch digest.
+  function pageSummary() {
+    try {
+      const parts = [];
+      const um = (document.title || '').match(/\((\d+)\+?\)/);
+      if (um) parts.push(um[1] + ' unread');
+      const h = document.querySelector('h1, [role="heading"][aria-level="1"], [role="heading"]');
+      if (h && h.textContent && h.textContent.trim()) parts.push(h.textContent.trim().replace(/\s+/g, ' ').slice(0, 80));
+      return parts.join(' · ');
+    } catch (e) { return ''; }
+  }
+  function reportSummary() {
+    try { ipcRenderer.sendToHost('workhub-page-summary', { summary: pageSummary() }); } catch (e) {}
+  }
+  window.addEventListener('load', function () { setTimeout(reportSummary, 1500); });
 })();

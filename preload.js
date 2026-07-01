@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('workhub', {
   setNotes:         (notes) => ipcRenderer.invoke('notes:set', notes),
   setTodos:         (todos) => ipcRenderer.invoke('todos:set', todos),
 
+  // ---- notification history + changelog ----
+  setNotifLog:      (log) => ipcRenderer.invoke('notifLog:set', log),
+  getChangelog:     () => ipcRenderer.invoke('updates:changelog'),
+
   // ---- password vault ----
   pwAvailable:      () => ipcRenderer.invoke('pw:available'),
   pwSave:           (cred) => ipcRenderer.invoke('pw:save', cred),

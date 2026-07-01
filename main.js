@@ -43,6 +43,8 @@ const DEFAULT_CONFIG = {
     exportIncludesWidgets: false,        // include sticky notes + to-do lists in workspace export
     useSystemFrame: false,               // true = OS native window frame; false = WorkHub's custom titlebar
     passwords: { enabled: true, autofill: true },   // remember + auto-fill site logins (encrypted)
+    showMissedOnLaunch: true,            // show the "What have I missed?" digest on launch
+    lastSeenVersion: '',                 // last version whose "What's New" the user has seen
     updates: { autoCheck: true, autoInstall: true },   // autoInstall: download + restart to update with no wizard
     notifications: { os: true, apps: {}, snoozeUntil: 0 },   // os = master toggle; apps[siteId]=false to mute; snoozeUntil = suppress OS toasts until this time
     sidebar: {
@@ -70,8 +72,9 @@ const DEFAULT_CONFIG = {
     }
   },
   slack: { clientId: '', redirectUri: 'https://0mattsmith.github.io/workhub/slack-callback.html' },
-  notes: [],   // sticky notes
-  todos: []    // to-do lists
+  notes: [],     // sticky notes
+  todos: [],     // to-do lists
+  notifLog: []   // persisted notification history (powers the "What have I missed?" digest)
 };
 
 // Suggestions shown on the empty state. Purely cosmetic shortcuts.
@@ -564,6 +567,30 @@ ipcMain.handle('todos:set', (_e, todos) => {
   config.todos = Array.isArray(todos) ? todos : [];
   saveConfig(config);
   return config.todos;
+});
+
+ipcMain.handle('notifLog:set', (_e, log) => {
+  config.notifLog = Array.isArray(log) ? log.slice(0, 300) : [];
+  saveConfig(config);
+  return config.notifLog;
+});
+
+// Parse CHANGELOG.md into [{ version, lines[] }] for the "What's New" window.
+ipcMain.handle('updates:changelog', () => {
+  try {
+    const text = fs.readFileSync(path.join(__dirname, 'CHANGELOG.md'), 'utf8');
+    const out = [];
+    let cur = null;
+    for (const raw of text.split(/\r?\n/)) {
+      const h = raw.match(/^##\s+(?:v)?(\d+\.\d+\.\d+)/i);   // "## 1.2.3" or "## v1.2.3 - date"
+      if (h) { cur = { version: h[1], lines: [] }; out.push(cur); continue; }
+      if (cur) {
+        const li = raw.match(/^\s*[-*]\s+(.*)$/);            // bullet lines
+        if (li && li[1].trim()) cur.lines.push(li[1].trim());
+      }
+    }
+    return out;
+  } catch (e) { return []; }
 });
 
 // ---- password vault ----
