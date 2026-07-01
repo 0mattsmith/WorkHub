@@ -996,7 +996,14 @@ ipcMain.handle('workspace:import', async () => {
   if (canceled || !filePaths || !filePaths[0]) return { ok: false };
   try {
     const parsed = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'));
-    if (Array.isArray(parsed.sites)) config.sites = parsed.sites;
+    if (Array.isArray(parsed.sites)) {
+      // Keep imported icons (custom or cached favicon) stable by freezing them,
+      // so they don't get replaced by whatever the site serves after import.
+      config.sites = parsed.sites.map((s) => {
+        if (s && (s.customIcon || s.favicon)) s.iconFrozen = true;
+        return s;
+      });
+    }
     if (parsed.settings) config.settings = deepMerge(DEFAULT_CONFIG.settings, parsed.settings);
     if (Array.isArray(parsed.notes)) config.notes = parsed.notes;   // present only if the export opted in
     if (Array.isArray(parsed.todos)) config.todos = parsed.todos;
