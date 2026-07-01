@@ -160,8 +160,8 @@
           <button type="button" data-pane="performance">Performance</button>
           <button type="button" data-pane="notifications">Notifications</button>
           <button type="button" data-pane="smoothwall">Smoothwall</button>
-          <button type="button" data-pane="slack">Slack</button>
           <button type="button" data-pane="workspace">Workspace</button>
+          <button type="button" data-pane="passwords">Passwords</button>
           <button type="button" data-pane="updates">Updates</button>
           <button type="button" data-pane="general">General</button>
         </nav>
@@ -350,6 +350,16 @@
         <label class="switch"><input type="checkbox" id="osNotifyToggle" /><span class="slider"></span></label>
       </div>
       <div class="setting-row">
+        <div class="setting-text"><strong>Snooze desktop notifications</strong><span id="snoozeStatus">Off — toasts are showing.</span></div>
+        <select class="select" id="snoozeSelect">
+          <option value="0">Off</option>
+          <option value="30">30 minutes</option>
+          <option value="60">1 hour</option>
+          <option value="240">4 hours</option>
+          <option value="tomorrow">Until tomorrow (8am)</option>
+        </select>
+      </div>
+      <div class="setting-row">
         <div class="setting-text"><strong>Per-app</strong><span>Choose which apps may pop a desktop notification.</span></div>
       </div>
       <div class="notify-apps" id="notifApps"></div>
@@ -371,36 +381,6 @@
 
         </section>
 
-        <section class="settings-pane" data-pane="slack">
-          <h3 class="section-h">Slack <span class="badge-lite">Native</span></h3>
-
-      <div class="setting-row">
-        <div class="setting-text"><strong id="slackStatusLine">Not connected</strong><span id="slackStatusSub">Enter your Slack app credentials, save, then connect.</span></div>
-        <div class="inline-add">
-          <button class="text-btn" id="slackDisconnectBtn" hidden>Disconnect</button>
-          <button class="text-btn accent" id="slackConnectBtn">Connect</button>
-        </div>
-      </div>
-
-      <label class="field">
-        <span>Client ID</span>
-        <input type="text" id="slackClientId" placeholder="e.g. 1234567890.123..." autocomplete="off" />
-      </label>
-      <label class="field">
-        <span>Client secret <span style="color:var(--text-faint)">(stored locally, never committed)</span></span>
-        <input type="password" id="slackSecret" placeholder="leave blank to keep the saved one" autocomplete="off" />
-      </label>
-      <label class="field">
-        <span>Redirect URL (must exactly match your Slack app)</span>
-        <input type="text" id="slackRedirect" placeholder="https://you.github.io/workhub/slack-callback.html" autocomplete="off" />
-      </label>
-      <div class="setting-row">
-        <div class="setting-text"><span>Save credentials first, then Connect — a browser opens for Slack sign-in and returns to WorkHub.</span></div>
-        <button class="text-btn accent" id="slackSaveCreds">Save credentials</button>
-      </div>
-
-        </section>
-
         <section class="settings-pane" data-pane="workspace">
           <h3 class="section-h">Workspace</h3>
 
@@ -415,6 +395,28 @@
       <div class="setting-row">
         <div class="setting-text"><strong>Include notes &amp; to-dos</strong><span>Add your sticky notes and to-do lists to the exported workspace file. Off by default.</span></div>
         <label class="switch"><input type="checkbox" id="exportWidgetsToggle"><span class="slider"></span></label>
+      </div>
+
+        </section>
+
+        <section class="settings-pane" data-pane="passwords">
+          <h3 class="section-h">Passwords</h3>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Remember passwords</strong><span>Offer to save site logins, encrypted with your device's secure store (Windows / macOS keychain).</span></div>
+        <label class="switch"><input type="checkbox" id="pwEnabledToggle" /><span class="slider"></span></label>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text"><strong>Auto-fill on sign-in pages</strong><span>Fill saved logins automatically if a site signs you out.</span></div>
+        <label class="switch"><input type="checkbox" id="pwAutofillToggle" /><span class="slider"></span></label>
+      </div>
+
+      <h4 class="sub-h">Saved logins</h4>
+      <div class="saved-logins" id="savedLogins"></div>
+      <div class="setting-row">
+        <div class="setting-text"><span>Passwords are stored only on this device and are never included in a workspace export.</span></div>
+        <button class="text-btn danger" id="pwClearAll">Clear all</button>
       </div>
 
         </section>
@@ -465,6 +467,7 @@
   <div class="notif-panel" id="notifPanel" hidden>
     <div class="notif-head">
       <span class="notif-head-title">Notifications</span>
+      <span class="notif-snooze-note" id="notifSnoozeNote" hidden></span>
       <button class="notif-close" id="notifClose" title="Close" aria-label="Close"></button>
     </div>
     <div class="notif-list" id="notifList"></div>

@@ -59,3 +59,84 @@ try {
     window.Notification = Wrapped;
   }
 } catch (e) {}
+
+/* ---------------------------------------------------------------------------
+   Password capture & auto-fill
+   On submit/login we report the entered username+password to the host (which
+   offers to save them, encrypted). On load we ask the host for any saved login
+   for this exact origin and fill empty fields. Plaintext never touches disk
+   here — it only flows through the host to/from the encrypted main-process vault.
+   --------------------------------------------------------------------------- */
+(function () {
+  function findLoginFields() {
+    const pw = document.querySelector('input[type="password"]');
+    if (!pw) return null;
+    let user = null;
+    const all = Array.from(document.querySelectorAll('input'));
+    const pwIdx = all.indexOf(pw);
+    for (let i = pwIdx - 1; i >= 0; i--) {                       // nearest text/email field before the password
+      const t = (all[i].type || 'text').toLowerCase();
+      if (t === 'text' || t === 'email' || t === 'tel' || !all[i].type) { user = all[i]; break; }
+    }
+    if (!user) {
+      user = document.querySelector('input[type="email"], input[type="text"], input[autocomplete="username"]');
+    }
+    return { user: user, pw: pw };
+  }
+
+  function report() {
+    try {
+      const f = findLoginFields();
+      if (!f || !f.pw || !f.pw.value) return;
+      ipcRenderer.sendToHost('workhub-cred-captured', {
+        origin: location.origin,
+        username: f.user ? (f.user.value || '') : '',
+        password: f.pw.value
+      });
+    } catch (e) {}
+  }
+
+  // Capture submissions a few different ways (plain forms + SPA login buttons).
+  window.addEventListener('submit', report, true);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target && e.target.type === 'password') report();
+  }, true);
+  window.addEventListener('click', (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest('button, input[type="submit"], [role="button"]') : null;
+    if (btn) setTimeout(report, 0);
+  }, true);
+
+  // Auto-fill -----------------------------------------------------------------
+  let filled = false;
+  function requestFill() {
+    if (filled) return;
+    try {
+      const f = findLoginFields();
+      if (f && f.pw) ipcRenderer.sendToHost('workhub-cred-request', { origin: location.origin });
+    } catch (e) {}
+  }
+  ipcRenderer.on('workhub-cred-fill', (_e, data) => {
+    try {
+      if (!data || !data.password || filled) return;
+      const f = findLoginFields();
+      if (!f || !f.pw) return;
+      if (f.user && data.username && !f.user.value) {
+        f.user.value = data.username;
+        f.user.dispatchEvent(new Event('input', { bubbles: true }));
+        f.user.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (!f.pw.value) {
+        f.pw.value = data.password;
+        f.pw.dispatchEvent(new Event('input', { bubbles: true }));
+        f.pw.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      filled = true;
+    } catch (e) {}
+  });
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', requestFill);
+  else requestFill();
+  window.addEventListener('load', requestFill);
+  setTimeout(requestFill, 1200);
+  setTimeout(requestFill, 3000);
+})();

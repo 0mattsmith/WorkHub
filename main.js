@@ -41,8 +41,9 @@ const DEFAULT_CONFIG = {
     collapsed: {},
     launchAtStartup: false,
     exportIncludesWidgets: false,        // include sticky notes + to-do lists in workspace export
+    passwords: { enabled: true, autofill: true },   // remember + auto-fill site logins (encrypted)
     updates: { autoCheck: true },
-    notifications: { os: true, apps: {} },   // os = master toggle; apps[siteId]=false to mute
+    notifications: { os: true, apps: {}, snoozeUntil: 0 },   // os = master toggle; apps[siteId]=false to mute; snoozeUntil = suppress OS toasts until this time
     sidebar: {
       dock: 'left',                      // 'left' | 'right' | 'top' | 'bottom'
       size: 248,                         // px — width (left/right) or height (top/bottom)
@@ -402,6 +403,21 @@ function rebuildTrayMenu() {
     template.push({ label: 'Re-check status now', click: checkSmoothwallStatus });
     template.push({ type: 'separator' });
   }
+  const snoozed = snoozeActive();
+  const snoozeUntil = (config.settings.notifications && config.settings.notifications.snoozeUntil) || 0;
+  const untilLabel = snoozed ? new Date(snoozeUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  template.push({
+    label: snoozed ? `Notifications snoozed until ${untilLabel}` : 'Snooze notifications',
+    submenu: [
+      { label: 'Snooze for 30 minutes', click: () => setSnooze(Date.now() + 30 * 60000) },
+      { label: 'Snooze for 1 hour', click: () => setSnooze(Date.now() + 60 * 60000) },
+      { label: 'Snooze for 4 hours', click: () => setSnooze(Date.now() + 4 * 60 * 60000) },
+      { label: 'Snooze until tomorrow (8am)', click: () => setSnooze(tomorrowMorning()) },
+      { type: 'separator' },
+      { label: 'Resume notifications', enabled: snoozed, click: () => setSnooze(0) }
+    ]
+  });
+  template.push({ type: 'separator' });
   template.push({ label: 'Check for updates…', click: () => { showMainWindow(); checkForUpdates(true); } });
   template.push({ type: 'separator' });
   template.push({ label: 'Quit WorkHub', click: () => { isQuitting = true; app.quit(); } });
@@ -536,6 +552,37 @@ ipcMain.handle('todos:set', (_e, todos) => {
   return config.todos;
 });
 
+// ---- password vault ----
+ipcMain.handle('pw:available', () => pwAvailable());
+ipcMain.handle('pw:save', (_e, { origin, username, password } = {}) => pwSave(origin, username, password));
+ipcMain.handle('pw:fill', (_e, origin) => {                 // returns plaintext for auto-fill (exact origin only)
+  if (!config.settings.passwords || config.settings.passwords.enabled === false) return null;
+  if (config.settings.passwords.autofill === false) return null;
+  const c = pwBestForOrigin(origin);
+  return c ? { username: c.username, password: c.password } : null;
+});
+ipcMain.handle('pw:isNever', (_e, origin) => (pwVault.never || []).includes(origin));
+ipcMain.handle('pw:setNever', (_e, origin) => {
+  if (origin && !pwVault.never.includes(origin)) pwVault.never.push(origin);
+  return savePasswords();
+});
+ipcMain.handle('pw:list', () => {                            // usernames only — never expose passwords to the UI list
+  return Object.keys(pwVault.origins).map((origin) => ({
+    origin,
+    accounts: (pwVault.origins[origin] || []).map((c) => ({ username: c.username, savedAt: c.savedAt }))
+  }));
+});
+ipcMain.handle('pw:delete', (_e, { origin, username } = {}) => {
+  if (!origin) return false;
+  if (username === undefined) { delete pwVault.origins[origin]; }
+  else {
+    pwVault.origins[origin] = (pwVault.origins[origin] || []).filter((c) => c.username !== username);
+    if (!pwVault.origins[origin].length) delete pwVault.origins[origin];
+  }
+  return savePasswords();
+});
+ipcMain.handle('pw:clear', () => { pwVault = { origins: {}, never: [] }; return savePasswords(); });
+
 ipcMain.handle('sites:reset', () => {
   config.sites = JSON.parse(JSON.stringify(DEFAULT_CONFIG.sites)); // empty by design
   saveConfig(config);
@@ -621,6 +668,52 @@ function slackDec(stored) {
     if (stored.startsWith('raw:')) return Buffer.from(stored.slice(4), 'base64').toString('utf8');
   } catch (e) { /* ignore */ }
   return '';
+}
+
+// ---------------------------------------------------------------------------
+// Password vault — saved site logins, encrypted at rest with the OS keychain
+// (Windows DPAPI / macOS Keychain / Linux libsecret) via Electron safeStorage.
+// The whole vault is one encrypted blob in a separate file (never in the JSON
+// config, never in a workspace export). Plaintext passwords only leave the main
+// process to auto-fill the exact origin they were saved for.
+// ---------------------------------------------------------------------------
+const PW_FILE = () => path.join(app.getPath('userData'), 'workhub-passwords.bin');
+let pwVault = { origins: {}, never: [] };   // origins[origin] = [{username, password, savedAt}]
+
+function pwAvailable() {
+  try { return !!(safeStorage && safeStorage.isEncryptionAvailable()); } catch (e) { return false; }
+}
+function loadPasswords() {
+  try {
+    if (!fs.existsSync(PW_FILE())) return;
+    const raw = fs.readFileSync(PW_FILE());
+    const json = safeStorage.decryptString(raw);
+    const parsed = JSON.parse(json);
+    pwVault = { origins: parsed.origins || {}, never: parsed.never || [] };
+  } catch (e) { pwVault = { origins: {}, never: [] }; }
+}
+function savePasswords() {
+  try {
+    if (!pwAvailable()) return false;
+    const enc = safeStorage.encryptString(JSON.stringify(pwVault));
+    fs.writeFileSync(PW_FILE(), enc);
+    return true;
+  } catch (e) { return false; }
+}
+function pwSave(origin, username, password) {
+  if (!origin || !password) return false;
+  username = username || '';
+  const list = pwVault.origins[origin] || [];
+  const existing = list.find((c) => c.username === username);
+  if (existing) { existing.password = password; existing.savedAt = Date.now(); }
+  else list.push({ username, password, savedAt: Date.now() });
+  pwVault.origins[origin] = list;
+  return savePasswords();
+}
+function pwBestForOrigin(origin) {
+  const list = pwVault.origins[origin] || [];
+  if (!list.length) return null;
+  return list.slice().sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))[0];   // most recent
 }
 
 function slackStatus() {
@@ -762,8 +855,40 @@ ipcMain.handle('updates:install', () => {
   return true;
 });
 
+// ---- notification snooze (suppress Windows/macOS toasts for a while) -------
+function snoozeActive() {
+  const u = (config.settings.notifications && config.settings.notifications.snoozeUntil) || 0;
+  return u > Date.now();
+}
+function setSnooze(until) {
+  config.settings.notifications = config.settings.notifications || {};
+  config.settings.notifications.snoozeUntil = until || 0;
+  saveConfig(config);
+  rebuildTrayMenu();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('notify:snooze', config.settings.notifications.snoozeUntil);
+  }
+}
+function tomorrowMorning() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(8, 0, 0, 0);
+  return d.getTime();
+}
+
+ipcMain.handle('notify:getSnooze', () => (config.settings.notifications && config.settings.notifications.snoozeUntil) || 0);
+ipcMain.handle('notify:setSnooze', (_e, payload) => {
+  let until = 0;
+  if (payload && payload.until) until = payload.until;
+  else if (payload && payload.minutes) until = Date.now() + payload.minutes * 60000;
+  else if (payload && payload.tomorrow) until = tomorrowMorning();
+  setSnooze(until);
+  return until;
+});
+
 ipcMain.handle('notify:os', (_e, payload) => {
   try {
+    if (snoozeActive()) return { ok: false, snoozed: true };   // toasts are snoozed; in-app panel still records it
     if (!Notification.isSupported()) return false;
     const n = new Notification({
       title: (payload && payload.title) || 'WorkHub',
@@ -840,6 +965,7 @@ app.on('open-url', (event, url) => { event.preventDefault(); handleAppProtocol(u
 
 app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.workhub.app');  // proper Windows toast identity
+  loadPasswords();
   try {
     if (process.defaultApp && process.argv.length >= 2) {
       app.setAsDefaultProtocolClient('workhub', process.execPath, [path.resolve(process.argv[1])]);

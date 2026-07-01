@@ -20,6 +20,16 @@ contextBridge.exposeInMainWorld('workhub', {
   setNotes:         (notes) => ipcRenderer.invoke('notes:set', notes),
   setTodos:         (todos) => ipcRenderer.invoke('todos:set', todos),
 
+  // ---- password vault ----
+  pwAvailable:      () => ipcRenderer.invoke('pw:available'),
+  pwSave:           (cred) => ipcRenderer.invoke('pw:save', cred),
+  pwFill:           (origin) => ipcRenderer.invoke('pw:fill', origin),
+  pwIsNever:        (origin) => ipcRenderer.invoke('pw:isNever', origin),
+  pwSetNever:       (origin) => ipcRenderer.invoke('pw:setNever', origin),
+  pwList:           () => ipcRenderer.invoke('pw:list'),
+  pwDelete:         (target) => ipcRenderer.invoke('pw:delete', target),
+  pwClear:          () => ipcRenderer.invoke('pw:clear'),
+
   // ---- smoothwall ----
   openSmoothwall:   () => ipcRenderer.invoke('smoothwall:open'),
   checkSmoothwall:  () => ipcRenderer.invoke('smoothwall:check'),
@@ -46,6 +56,13 @@ contextBridge.exposeInMainWorld('workhub', {
 
   // ---- desktop notifications ----
   notifyOs:         (payload) => ipcRenderer.invoke('notify:os', payload),
+  getSnooze:        () => ipcRenderer.invoke('notify:getSnooze'),
+  setSnooze:        (payload) => ipcRenderer.invoke('notify:setSnooze', payload),
+  onSnooze:         (cb) => {
+    const handler = (_e, until) => cb(until);
+    ipcRenderer.on('notify:snooze', handler);
+    return () => ipcRenderer.removeListener('notify:snooze', handler);
+  },
   onActivateSite:   (cb) => {
     const handler = (_e, id) => cb(id);
     ipcRenderer.on('activate-site', handler);

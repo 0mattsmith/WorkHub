@@ -399,6 +399,8 @@ function ensureWebview(site) {
     if (e.channel === 'workhub-link-menu') showLinkMenu(e.args[0], wv);
     else if (e.channel === 'workhub-dismiss-menu') hideLinkMenu();
     else if (e.channel === 'workhub-notification') addNotification(site, e.args[0]);
+    else if (e.channel === 'workhub-cred-captured') maybeOfferSavePassword(e.args[0]);
+    else if (e.channel === 'workhub-cred-request') handleCredFillRequest(wv, e.args[0]);
   });
   return wv;
 }
@@ -847,7 +849,11 @@ function openSettings() {
   refreshUpdateUI();
   $('osNotifyToggle').checked = !(s.notifications && s.notifications.os === false);
   renderNotifyApps();
-  refreshSlackUI();
+  refreshSnoozeUI();
+  const pw = s.passwords || {};
+  $('pwEnabledToggle').checked = pw.enabled !== false;
+  $('pwAutofillToggle').checked = pw.autofill !== false;
+  renderSavedLogins();
   setSettingsPane(currentSettingsPane);
   $('settingsModal').hidden = false;
 }
@@ -885,6 +891,10 @@ async function saveSettings() {
     launchAtStartup: $('startupToggle').checked,
     showAddressBar: $('addressBarToggle').checked,
     exportIncludesWidgets: $('exportWidgetsToggle').checked,
+    passwords: {
+      enabled: $('pwEnabledToggle').checked,
+      autofill: $('pwAutofillToggle').checked
+    },
     updates: { autoCheck: $('autoUpdateToggle').checked },
     notifications: {
       os: $('osNotifyToggle').checked,
@@ -994,6 +1004,13 @@ function wireEvents() {
     const btn = e.target.closest('button[data-pane]');
     if (btn) setSettingsPane(btn.dataset.pane);
   });
+  $('pwClearAll').addEventListener('click', async () => {
+    await api.pwClear();
+    renderSavedLogins();
+  });
+  $('snoozeSelect').addEventListener('change', onSnoozeSelectChange);
+  api.onSnooze(updateSnoozeUI);
+  refreshSnoozeUI();
   $('saveSettingsBtn').addEventListener('click', saveSettings);
   $('closeSettingsBtn').addEventListener('click', closeSettings);
   $('resetSitesBtn').addEventListener('click', resetSites);
@@ -1141,27 +1158,6 @@ function wireEvents() {
     if (!state.settings.notifications) state.settings.notifications = { os: true, apps: {} };
     state.settings.notifications.os = $('osNotifyToggle').checked;
   });
-
-  $('slackSaveCreds').addEventListener('click', async () => {
-    const st = await api.slackSetCreds({
-      clientId: $('slackClientId').value,
-      secret: $('slackSecret').value,
-      redirectUri: $('slackRedirect').value
-    });
-    $('slackSecret').value = '';
-    updateSlackUI(st);
-    showToast('Slack credentials saved');
-  });
-  $('slackConnectBtn').addEventListener('click', async () => {
-    const r = await api.slackConnect();
-    if (!r || !r.ok) showToast(r && r.error ? r.error : 'Could not start Slack sign-in');
-    else showToast('Opening Slack sign-in…');
-  });
-  $('slackDisconnectBtn').addEventListener('click', async () => {
-    updateSlackUI(await api.slackDisconnect());
-    showToast('Slack disconnected');
-  });
-  api.onSlackStatus(updateSlackUI);
 
   // Right-click an empty part of the sidebar -> quick Compact toggle
   const sidebarEl = document.getElementById('sidebar');
@@ -1481,6 +1477,125 @@ function showToast(message) {
   toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
 }
 
+/* ---- Notification snooze ---- */
+function fmtTime(ts) {
+  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; }
+}
+function updateSnoozeUI(until) {
+  const active = until && until > Date.now();
+  const statusEl = $('snoozeStatus');
+  if (statusEl) statusEl.textContent = active ? ('Snoozed until ' + fmtTime(until) + ' — no desktop toasts.') : 'Off — toasts are showing.';
+  const sel = $('snoozeSelect');
+  if (sel && !active) sel.value = '0';
+  const note = $('notifSnoozeNote');
+  if (note) {
+    note.hidden = !active;
+    note.textContent = active ? ('Snoozed until ' + fmtTime(until)) : '';
+  }
+}
+async function refreshSnoozeUI() {
+  try { updateSnoozeUI(await api.getSnooze()); } catch (e) { updateSnoozeUI(0); }
+}
+function onSnoozeSelectChange() {
+  const v = $('snoozeSelect').value;
+  if (v === '0') api.setSnooze({ until: 0 });
+  else if (v === 'tomorrow') api.setSnooze({ tomorrow: true });
+  else api.setSnooze({ minutes: parseInt(v, 10) });
+}
+
+/* ---- Password vault ---- */
+const pwSessionSeen = new Map();   // origin -> "username\npassword" already saved/dismissed this session (avoids re-prompting)
+
+async function handleCredFillRequest(wv, data) {
+  try {
+    if (!data || !data.origin) return;
+    if (state.settings.passwords && state.settings.passwords.enabled === false) return;
+    const cred = await api.pwFill(data.origin);
+    if (cred && cred.password) wv.send('workhub-cred-fill', cred);
+  } catch (e) {}
+}
+
+async function maybeOfferSavePassword(data) {
+  try {
+    if (!data || !data.origin || !data.password) return;
+    if (state.settings.passwords && state.settings.passwords.enabled === false) return;
+    const key = (data.username || '') + '\n' + data.password;
+    if (pwSessionSeen.get(data.origin) === key) return;         // already handled this exact login
+    if (await api.pwIsNever(data.origin)) return;               // user said never for this site
+    showSavePasswordPrompt(data);
+  } catch (e) {}
+}
+
+function showSavePasswordPrompt(data) {
+  const existing = document.getElementById('pwPrompt');
+  if (existing) existing.remove();
+  const host = (() => { try { return new URL(data.origin).hostname; } catch (e) { return data.origin; } })();
+
+  const box = document.createElement('div');
+  box.className = 'pw-prompt';
+  box.id = 'pwPrompt';
+  box.innerHTML =
+    '<div class="pw-prompt-head">' +
+      '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 10V8a6 6 0 0 1 12 0v2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="4" y="10" width="16" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>' +
+      '<strong>Save password?</strong>' +
+      '<button class="pw-x" id="pwPromptX" aria-label="Dismiss">&times;</button>' +
+    '</div>' +
+    '<div class="pw-prompt-body">Save your login for <b>' + escapeHtml(host) + '</b>' +
+      (data.username ? ' (<span>' + escapeHtml(data.username) + '</span>)' : '') + '?</div>' +
+    '<div class="pw-prompt-actions">' +
+      '<button class="text-btn" id="pwNever">Never for this site</button>' +
+      '<span class="spacer"></span>' +
+      '<button class="text-btn" id="pwNotNow">Not now</button>' +
+      '<button class="primary-btn" id="pwSave">Save</button>' +
+    '</div>';
+  document.body.appendChild(box);
+
+  const done = () => { box.remove(); };
+  const remember = () => pwSessionSeen.set(data.origin, (data.username || '') + '\n' + data.password);
+
+  box.querySelector('#pwSave').addEventListener('click', async () => {
+    remember();
+    await api.pwSave({ origin: data.origin, username: data.username || '', password: data.password });
+    done();
+  });
+  box.querySelector('#pwNotNow').addEventListener('click', () => { remember(); done(); });
+  box.querySelector('#pwPromptX').addEventListener('click', () => { remember(); done(); });
+  box.querySelector('#pwNever').addEventListener('click', async () => { remember(); await api.pwSetNever(data.origin); done(); });
+
+  clearTimeout(showSavePasswordPrompt._t);
+  showSavePasswordPrompt._t = setTimeout(() => { if (document.getElementById('pwPrompt') === box) done(); }, 20000);
+}
+
+async function renderSavedLogins() {
+  const wrap = $('savedLogins');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  let list = [];
+  try { list = await api.pwList(); } catch (e) { list = []; }
+  if (!list.length) { wrap.innerHTML = '<div class="wid-empty">No saved passwords yet.</div>'; return; }
+  for (const entry of list) {
+    const host = (() => { try { return new URL(entry.origin).hostname; } catch (e) { return entry.origin; } })();
+    for (const acc of entry.accounts) {
+      const row = document.createElement('div');
+      row.className = 'saved-login';
+      const info = document.createElement('div');
+      info.className = 'saved-login-info';
+      info.innerHTML = '<strong>' + escapeHtml(host) + '</strong><span>' + escapeHtml(acc.username || '(no username)') + '</span>';
+      const del = document.createElement('button');
+      del.className = 'text-btn danger';
+      del.textContent = 'Delete';
+      del.addEventListener('click', async () => { await api.pwDelete({ origin: entry.origin, username: acc.username }); renderSavedLogins(); });
+      row.appendChild(info);
+      row.appendChild(del);
+      wrap.appendChild(row);
+    }
+  }
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 /* ---- Updates ---- */
 function setUpdateStatus(msg) { const e = $('updateStatus'); if (e) e.textContent = msg; }
 
@@ -1513,35 +1628,6 @@ function handleUpdateStatus(d) {
     case 'unsupported': setUpdateStatus("Auto-update isn't available in this build."); break;
     case 'error': setUpdateStatus('Update check failed: ' + (d.message || 'unknown')); break;
   }
-}
-
-/* ---- Slack (native OAuth) ---- */
-function updateSlackUI(st) {
-  if (!st) return;
-  const line = $('slackStatusLine'), sub = $('slackStatusSub');
-  const dis = $('slackDisconnectBtn'), con = $('slackConnectBtn');
-  if (st.connected) {
-    if (line) line.textContent = 'Connected' + (st.user ? ' as @' + st.user : '');
-    if (sub) sub.textContent = st.team ? ('Workspace: ' + st.team) : 'Slack account linked.';
-    if (dis) dis.hidden = false;
-    if (con) con.textContent = 'Reconnect';
-  } else {
-    if (line) line.textContent = 'Not connected';
-    if (sub) sub.textContent = st.error ? st.error : 'Enter your Slack app credentials, save, then connect.';
-    if (dis) dis.hidden = true;
-    if (con) con.textContent = 'Connect';
-  }
-  if (st.error) showToast('Slack: ' + st.error);
-}
-
-async function refreshSlackUI() {
-  try {
-    const st = await api.slackStatus();
-    $('slackClientId').value = st.clientId || '';
-    $('slackRedirect').value = st.redirectUri || 'https://0mattsmith.github.io/workhub/slack-callback.html';
-    $('slackSecret').value = '';
-    updateSlackUI(st);
-  } catch (e) { /* ignore */ }
 }
 
 /* ---- Notifications ---- */
