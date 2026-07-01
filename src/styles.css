@@ -626,3 +626,9 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after {
 .saved-login-info span { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .notif-snooze-note { font-size: 11px; color: var(--accent); margin-left: auto; margin-right: 8px; white-space: nowrap; }
 .notif-snooze-note[hidden] { display: none; }
+
+/* Update download progress bar -------------------------------------------- */
+.update-progress { margin: -4px 0 12px; }
+.update-progress[hidden] { display: none; }
+.update-progress-bar { height: 6px; border-radius: 999px; background: var(--surface); overflow: hidden; border: 1px solid var(--border); }
+.update-progress-bar span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 999px; transition: width .2s ease; }

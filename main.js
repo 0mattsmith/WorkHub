@@ -42,7 +42,7 @@ const DEFAULT_CONFIG = {
     launchAtStartup: false,
     exportIncludesWidgets: false,        // include sticky notes + to-do lists in workspace export
     passwords: { enabled: true, autofill: true },   // remember + auto-fill site logins (encrypted)
-    updates: { autoCheck: true },
+    updates: { autoCheck: true, autoInstall: true },   // autoInstall: download + restart to update with no wizard
     notifications: { os: true, apps: {}, snoozeUntil: 0 },   // os = master toggle; apps[siteId]=false to mute; snoozeUntil = suppress OS toasts until this time
     sidebar: {
       dock: 'left',                      // 'left' | 'right' | 'top' | 'bottom'
@@ -851,7 +851,8 @@ ipcMain.handle('app:webviewPreloadUrl', () => {
 ipcMain.handle('updates:info', () => ({ version: app.getVersion(), packaged: app.isPackaged, supported: !!autoUpdater }));
 ipcMain.handle('updates:check', () => { checkForUpdates(true); return true; });
 ipcMain.handle('updates:install', () => {
-  if (autoUpdater && app.isPackaged) { isQuitting = true; autoUpdater.quitAndInstall(); }
+  // isSilent=true (no installer window), isForceRunAfter=true (relaunch after installing)
+  if (autoUpdater && app.isPackaged) { isQuitting = true; autoUpdater.quitAndInstall(true, true); }
   return true;
 });
 

@@ -895,7 +895,7 @@ async function saveSettings() {
       enabled: $('pwEnabledToggle').checked,
       autofill: $('pwAutofillToggle').checked
     },
-    updates: { autoCheck: $('autoUpdateToggle').checked },
+    updates: { autoCheck: $('autoUpdateToggle').checked, autoInstall: $('autoInstallToggle').checked },
     notifications: {
       os: $('osNotifyToggle').checked,
       apps: (state.settings.notifications && state.settings.notifications.apps) || {}
@@ -1023,6 +1023,10 @@ function wireEvents() {
   $('autoUpdateToggle').addEventListener('change', () => {
     if (!state.settings.updates) state.settings.updates = { autoCheck: true };
     state.settings.updates.autoCheck = $('autoUpdateToggle').checked;
+  });
+  $('autoInstallToggle').addEventListener('change', () => {
+    if (!state.settings.updates) state.settings.updates = { autoCheck: true };
+    state.settings.updates.autoInstall = $('autoInstallToggle').checked;
   });
   api.onUpdateStatus(handleUpdateStatus);
 
@@ -1605,6 +1609,8 @@ async function refreshUpdateUI() {
     const v = $('appVersion'); if (v) v.textContent = 'v' + info.version;
     const tog = $('autoUpdateToggle');
     if (tog) tog.checked = !(state.settings.updates && state.settings.updates.autoCheck === false);
+    const autoInst = $('autoInstallToggle');
+    if (autoInst) autoInst.checked = !(state.settings.updates && state.settings.updates.autoInstall === false);
     const inst = $('installUpdateBtn'); if (inst) inst.hidden = true;
     if (!info.packaged) setUpdateStatus('Dev mode — updates apply to the installed app.');
     else if (!info.supported) setUpdateStatus("Auto-update isn't available in this build.");
@@ -1612,22 +1618,73 @@ async function refreshUpdateUI() {
   } catch (e) { /* ignore */ }
 }
 
+function setUpdateProgress(percent) {
+  const wrap = $('updateProgress'), fill = $('updateProgressFill');
+  if (wrap) wrap.hidden = (percent == null);
+  if (fill && percent != null) fill.style.width = Math.max(0, Math.min(100, percent)) + '%';
+}
+
 function handleUpdateStatus(d) {
   const inst = $('installUpdateBtn');
+  const autoInstall = !(state.settings.updates && state.settings.updates.autoInstall === false);
   switch (d && d.state) {
-    case 'checking': setUpdateStatus('Checking for updates…'); break;
-    case 'available': setUpdateStatus('Update found' + (d.version ? ' (v' + d.version + ')' : '') + ' — downloading…'); break;
-    case 'progress': setUpdateStatus('Downloading… ' + (d.percent || 0) + '%'); break;
+    case 'checking': setUpdateStatus('Checking for updates…'); setUpdateProgress(null); break;
+    case 'available':
+      setUpdateStatus('Update found' + (d.version ? ' (v' + d.version + ')' : '') + ' — downloading…');
+      setUpdateProgress(0);
+      break;
+    case 'progress':
+      setUpdateStatus('Downloading update… ' + (d.percent || 0) + '%');
+      setUpdateProgress(d.percent || 0);
+      break;
     case 'downloaded':
       setUpdateStatus('Update ready' + (d.version ? ' (v' + d.version + ')' : '') + '.');
+      setUpdateProgress(100);
       if (inst) inst.hidden = false;
-      showToast('Update downloaded — restart to install');
+      if (autoInstall) startUpdateCountdown(d.version);
+      else showToast('Update downloaded — restart to install');
       break;
-    case 'none': setUpdateStatus("You're on the latest version."); break;
-    case 'dev': setUpdateStatus('Dev mode — updates apply to the installed app.'); break;
-    case 'unsupported': setUpdateStatus("Auto-update isn't available in this build."); break;
-    case 'error': setUpdateStatus('Update check failed: ' + (d.message || 'unknown')); break;
+    case 'none': setUpdateStatus("You're on the latest version."); setUpdateProgress(null); break;
+    case 'dev': setUpdateStatus('Dev mode — updates apply to the installed app.'); setUpdateProgress(null); break;
+    case 'unsupported': setUpdateStatus("Auto-update isn't available in this build."); setUpdateProgress(null); break;
+    case 'error': setUpdateStatus('Update check failed: ' + (d.message || 'unknown')); setUpdateProgress(null); break;
   }
+}
+
+// When an update finishes downloading, restart automatically after a short,
+// cancelable countdown so the user is never yanked out of their work.
+let updateCountdownTimer = null;
+function startUpdateCountdown(version) {
+  if (document.getElementById('updateCountdown')) return;
+  let secs = 10;
+  const card = document.createElement('div');
+  card.className = 'pw-prompt';
+  card.id = 'updateCountdown';
+  card.innerHTML =
+    '<div class="pw-prompt-head">' +
+      '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 12a8 8 0 1 0 8-8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 4V1L8 5l4 4V6" fill="currentColor"/></svg>' +
+      '<strong>Update ready' + (version ? ' (v' + version + ')' : '') + '</strong>' +
+      '<button class="pw-x" id="updateCancelX" aria-label="Later">&times;</button>' +
+    '</div>' +
+    '<div class="pw-prompt-body">Restarting to install in <b id="updateSecs">' + secs + '</b>s…</div>' +
+    '<div class="pw-prompt-actions">' +
+      '<button class="text-btn" id="updateLater">Later</button>' +
+      '<span class="spacer"></span>' +
+      '<button class="primary-btn" id="updateNow">Restart now</button>' +
+    '</div>';
+  document.body.appendChild(card);
+
+  const stop = () => { clearInterval(updateCountdownTimer); updateCountdownTimer = null; card.remove(); };
+  card.querySelector('#updateNow').addEventListener('click', () => { clearInterval(updateCountdownTimer); api.installUpdate(); });
+  card.querySelector('#updateLater').addEventListener('click', stop);
+  card.querySelector('#updateCancelX').addEventListener('click', stop);
+
+  updateCountdownTimer = setInterval(() => {
+    secs -= 1;
+    const el = document.getElementById('updateSecs');
+    if (el) el.textContent = secs;
+    if (secs <= 0) { clearInterval(updateCountdownTimer); api.installUpdate(); }
+  }, 1000);
 }
 
 /* ---- Notifications ---- */
