@@ -151,7 +151,7 @@
     if (!wrap) return;
     wrap.innerHTML = '';
     const stored = notes.filter((n) => n.stored);
-    if (!stored.length) { wrap.innerHTML = '<div class="wid-empty">No stored notes</div>'; return; }
+    if (!stored.length) return;   // empty: just the header + button, nothing else
     for (const n of stored) {
       const item = document.createElement('div');
       item.className = 'wid-item';
@@ -264,7 +264,7 @@
     if (!wrap) return;
     wrap.innerHTML = '';
     const stored = todos.filter((t) => t.stored);
-    if (!stored.length) { wrap.innerHTML = '<div class="wid-empty">No stored lists</div>'; return; }
+    if (!stored.length) return;   // empty: just the header + button, nothing else
     for (const t of stored) {
       const item = document.createElement('div');
       item.className = 'wid-item';

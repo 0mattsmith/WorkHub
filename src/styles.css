@@ -585,13 +585,13 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after {
    =========================================================================== */
 
 /* Sidebar sections -------------------------------------------------------- */
-.sb-widgets { margin-top: 12px; padding: 8px 8px 2px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; max-height: 38vh; overflow-y: auto; }
+.sb-widgets { margin-top: 12px; padding: 8px 8px 2px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; max-height: 38vh; overflow-y: auto; overflow-x: hidden; }
 .app.locked .add-btn { display: none; }   /* when locked, add via the sidebar right-click menu instead */
 .sb-wid-sec { display: flex; flex-direction: column; gap: 3px; }
 .sb-wid-head { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding: 0 4px; }
 .sb-wid-add { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .sb-wid-add:hover { color: var(--text); border-color: var(--accent); }
-.sb-wid-list { display: flex; flex-direction: column; gap: 2px; }
+.sb-wid-list { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
 .wid-empty { font-size: 11px; color: var(--muted); padding: 2px 6px; opacity: .7; }
 .wid-item { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: 7px; cursor: pointer; color: var(--text); }
 .wid-item:hover { background: var(--hover); }
@@ -604,9 +604,11 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after {
 
 /* In compact (icon-only) sidebar, hide the section text but keep it usable */
 .app.compact .sb-wid-head span { display: none; }
+.app.compact .sb-wid-head { justify-content: center; padding: 0; }
+.app.compact .sb-wid-sec { align-items: center; width: 100%; }
 .app.compact .wid-label { display: none; }
-.app.compact .sb-widgets { align-items: center; }
-.app.compact .wid-item { justify-content: center; padding: 5px; }
+.app.compact .sb-widgets { align-items: center; padding-left: 4px; padding-right: 4px; }
+.app.compact .wid-item { justify-content: center; padding: 5px; width: 100%; }
 
 /* Floating layer ---------------------------------------------------------- */
 .widget-layer { position: fixed; inset: 0; pointer-events: none; z-index: 95; }
