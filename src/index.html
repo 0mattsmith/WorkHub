@@ -25,7 +25,7 @@
   <div class="app" data-dock="left">
     <!-- ===================== Sidebar ===================== -->
     <aside class="sidebar" id="sidebar">
-      <div class="brand">
+      <div class="brand" id="brand">
         <div class="brand-mark" id="brandMark" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="22" height="22">
             <path d="M4 4.8a1.6 1.6 0 0 1 1.6-1.6h12.8A1.6 1.6 0 0 1 20 4.8v8.4L12 21l-8-7.8V4.8Z" fill="currentColor"/>
@@ -84,7 +84,7 @@
     </aside>
 
     <!-- ===================== Main content ===================== -->
-    <main class="content">
+    <main class="content" id="content">
       <!-- Navigation bar -->
       <div class="navbar" id="navbar" hidden>
         <div class="nav-controls">
@@ -150,6 +150,15 @@
         <span>List</span>
         <select class="select" id="siteList" style="width:100%"></select>
       </label>
+      <div class="setting-row">
+        <div class="setting-text"><strong>Custom icon</strong><span>Upload your own image if the site's favicon isn't ideal.</span></div>
+        <div class="avatar-controls">
+          <span class="custom-icon-preview" id="customIconPreview"></span>
+          <label class="text-btn" for="customIconFile">Upload…</label>
+          <input type="file" id="customIconFile" accept="image/*" hidden />
+          <button class="text-btn" id="customIconRemove" type="button">Remove</button>
+        </div>
+      </div>
       <p class="field-hint" id="siteError" hidden></p>
       <div class="modal-actions">
         <button class="text-btn danger" id="deleteSiteBtn" hidden>Remove</button>
@@ -472,6 +481,10 @@
       <div class="setting-row">
         <div class="setting-text"><strong>Use system frames &amp; borders</strong><span>Use your operating system's window frame instead of WorkHub's custom titlebar. Restart required.</span></div>
         <label class="switch"><input type="checkbox" id="systemFrameToggle" /><span class="slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <div class="setting-text"><strong>Compact titlebar</strong><span>Pull the avatar, name and the back/forward/home + address bar up into the titlebar to save vertical space.</span></div>
+        <label class="switch"><input type="checkbox" id="titlebarCompactToggle" /><span class="slider"></span></label>
       </div>
       <div class="setting-row">
         <div class="setting-text"><strong>Reset all sites</strong><span>Removes every pinned site and returns to the empty state.</span></div>

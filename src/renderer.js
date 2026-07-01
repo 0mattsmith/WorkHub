@@ -185,6 +185,15 @@ async function cacheSiteIcon(site, srcUrl) {
 }
 
 function paintIcon(boxEl, site) {
+  if (site.customIcon) {                        // user-supplied image wins over everything
+    boxEl.classList.remove('has-app-icon');
+    const img = document.createElement('img');
+    img.alt = '';
+    boxEl.textContent = '';
+    boxEl.appendChild(img);
+    img.src = site.customIcon;
+    return;
+  }
   const key = site.icon || guessIcon(site.url);
   if (key && APP_ICONS[key]) {
     boxEl.classList.add('has-app-icon');
@@ -387,7 +396,7 @@ function ensureWebview(site) {
     updateTabBadge(site.id, effectiveBadge(site.id));
   });
   wv.addEventListener('page-favicon-updated', (e) => {
-    if (site.iconFrozen) return;                 // user pinned this icon — don't let the page change it
+    if (site.iconFrozen || site.customIcon) return;   // user pinned/uploaded this icon — don't let the page change it
     if (e.favicons && e.favicons.length && !siteHasAppIcon(site)) {
       const best = e.favicons[e.favicons.length - 1];   // usually the highest-res one
       setTabFavicon(site.id, best);
@@ -752,6 +761,36 @@ function activateSite(id) {
    =========================================================================== */
 let editingId = null;
 
+let pendingCustomIcon = null;
+function renderCustomIconPreview() {
+  const p = $('customIconPreview');
+  if (!p) return;
+  p.innerHTML = '';
+  if (pendingCustomIcon) { const img = document.createElement('img'); img.alt = ''; img.src = pendingCustomIcon; p.appendChild(img); p.classList.add('has'); }
+  else p.classList.remove('has');
+}
+function loadCustomIconFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const size = 64;
+      const c = document.createElement('canvas'); c.width = size; c.height = size;
+      const ctx = c.getContext('2d');
+      const scale = Math.min(size / img.width, size / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      ctx.clearRect(0, 0, size, size);
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      try { pendingCustomIcon = c.toDataURL('image/png'); } catch (e) { pendingCustomIcon = reader.result; }
+      renderCustomIconPreview();
+    };
+    img.onerror = () => { pendingCustomIcon = reader.result; renderCustomIconPreview(); };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function openSiteModal(site) {
   editingId = site ? site.id : null;
   $('siteModalTitle').textContent = site ? 'Edit site' : 'Add site';
@@ -759,6 +798,8 @@ function openSiteModal(site) {
   $('siteUrl').value = site ? site.url : '';
   populateListSelect(site ? (site.group || '') : '');
   $('deleteSiteBtn').hidden = !site;
+  pendingCustomIcon = (site && site.customIcon) || null;
+  renderCustomIconPreview();
   $('siteError').hidden = true;
   $('siteModal').hidden = false;
   setTimeout(() => $('siteName').focus(), 30);
@@ -778,6 +819,7 @@ async function saveSite() {
       const urlChanged = site.url !== url;
       site.name = name; site.url = url;
       const g = $('siteList').value; if (g) site.group = g; else delete site.group;
+      if (pendingCustomIcon) site.customIcon = pendingCustomIcon; else delete site.customIcon;
       if (urlChanged) {
         meta(site.id).lastUrl = null;
         delete site.favicon;   // stale cached icon — let it re-fetch for the new URL
@@ -787,6 +829,7 @@ async function saveSite() {
   } else {
     const site = { id: uid(), name, url };
     const g = $('siteList').value; if (g) site.group = g;
+    if (pendingCustomIcon) site.customIcon = pendingCustomIcon;
     state.sites.push(site);
     await persistSites();
     renderTabs(); updateEmptyState();
@@ -850,6 +893,7 @@ function openSettings() {
   $('addressBarToggle').checked = s.showAddressBar !== false;
   $('exportWidgetsToggle').checked = !!s.exportIncludesWidgets;
   $('systemFrameToggle').checked = !!s.useSystemFrame;
+  $('titlebarCompactToggle').checked = !!s.titlebarCompact;
 
   $('sleepToggle').checked = !!perf.sleepInactiveTabs;
   $('sleepMinutes').value = String(perf.sleepAfterMinutes != null ? perf.sleepAfterMinutes : 15);
@@ -906,6 +950,7 @@ async function saveSettings() {
     showAddressBar: $('addressBarToggle').checked,
     exportIncludesWidgets: $('exportWidgetsToggle').checked,
     useSystemFrame: $('systemFrameToggle').checked,
+    titlebarCompact: $('titlebarCompactToggle').checked,
     passwords: {
       enabled: $('pwEnabledToggle').checked,
       autofill: $('pwAutofillToggle').checked
@@ -1011,6 +1056,8 @@ function wireEvents() {
   $('saveSiteBtn').addEventListener('click', saveSite);
   $('cancelSiteBtn').addEventListener('click', closeSiteModal);
   $('deleteSiteBtn').addEventListener('click', deleteSite);
+  $('customIconFile').addEventListener('change', (e) => { loadCustomIconFile(e.target.files && e.target.files[0]); e.target.value = ''; });
+  $('customIconRemove').addEventListener('click', () => { pendingCustomIcon = null; renderCustomIconPreview(); });
   $('siteUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSite(); });
   $('siteName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('siteUrl').focus(); });
 
@@ -1029,6 +1076,10 @@ function wireEvents() {
 
   initTitlebar();
   $('systemFrameToggle').addEventListener('change', () => { showToast('Restart WorkHub to apply the window frame change.'); });
+  $('titlebarCompactToggle').addEventListener('change', () => {
+    state.settings.titlebarCompact = $('titlebarCompactToggle').checked;
+    applyCompactTitlebar();
+  });
   $('saveSettingsBtn').addEventListener('click', saveSettings);
   $('closeSettingsBtn').addEventListener('click', closeSettings);
   $('resetSitesBtn').addEventListener('click', resetSites);
@@ -1580,6 +1631,33 @@ async function initTitlebar() {
     }
   } catch (e) { /* ignore */ }
   if (api.onMaxChange) api.onMaxChange(setMaxIcon);
+  applyCompactTitlebar();
+}
+
+// Compact titlebar: pull the brand (avatar + name) and the nav/address bar up
+// into the titlebar row. Moving the actual DOM nodes keeps all their wiring.
+function applyCompactTitlebar() {
+  const tb = $('titlebar'), title = $('titlebarTitle'), controls = $('winControls');
+  const brand = $('brand'), navbar = $('navbar'), sidebar = $('sidebar'), content = $('content');
+  if (!tb || !brand || !navbar || !sidebar || !content) return;
+  const on = state.settings.titlebarCompact === true && !document.body.classList.contains('system-frame');
+
+  if (on) {
+    tb.classList.add('compact');
+    if (title) title.style.display = 'none';
+    let spacer = $('titlebarSpacer');
+    if (!spacer) { spacer = document.createElement('div'); spacer.className = 'titlebar-spacer'; spacer.id = 'titlebarSpacer'; }
+    if (brand.parentElement !== tb) tb.insertBefore(brand, controls || null);
+    if (spacer.parentElement !== tb) tb.insertBefore(spacer, controls || null);
+    if (navbar.parentElement !== tb) tb.insertBefore(navbar, spacer);       // brand, navbar, spacer, controls
+  } else {
+    tb.classList.remove('compact');
+    if (title) title.style.display = '';
+    const spacer = $('titlebarSpacer');
+    if (spacer) spacer.remove();
+    if (brand.parentElement === tb) sidebar.insertBefore(brand, sidebar.firstChild);
+    if (navbar.parentElement === tb) content.insertBefore(navbar, content.firstChild);
+  }
 }
 
 /* ---- Notification snooze ---- */

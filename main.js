@@ -42,6 +42,7 @@ const DEFAULT_CONFIG = {
     launchAtStartup: false,
     exportIncludesWidgets: false,        // include sticky notes + to-do lists in workspace export
     useSystemFrame: false,               // true = OS native window frame; false = WorkHub's custom titlebar
+    titlebarCompact: false,              // merge brand + nav/address bar into the titlebar row
     passwords: { enabled: true, autofill: true },   // remember + auto-fill site logins (encrypted)
     showMissedOnLaunch: true,            // show the "What have I missed?" digest on launch
     lastSeenVersion: '',                 // last version whose "What's New" the user has seen

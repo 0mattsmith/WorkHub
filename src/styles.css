@@ -81,6 +81,28 @@ body.mac .titlebar-title { padding-left: 80px; }
 /* System-frame mode: no custom titlebar at all */
 body.system-frame .titlebar { display: none; }
 
+/* Compact titlebar: brand + nav/address bar merged into the titlebar row */
+.titlebar.compact { height: 46px; padding-left: 8px; gap: 8px; align-items: center; }
+.titlebar.compact .titlebar-title { display: none; }
+.titlebar.compact .brand { padding: 0; margin: 0; gap: 8px; flex-shrink: 0; -webkit-app-region: drag; }
+.titlebar.compact .brand .brand-sub { display: none; }
+.titlebar.compact .brand .brand-name { font-size: 13px; }
+.titlebar.compact .brand .brand-mark svg { width: 20px; height: 20px; }
+.titlebar.compact .navbar {
+  -webkit-app-region: no-drag; height: 34px; flex: 1 1 auto; max-width: 640px;
+  border-bottom: none; background: transparent; padding: 0 4px;
+}
+.titlebar-spacer { flex: 1 1 auto; align-self: stretch; min-width: 24px; -webkit-app-region: drag; }
+body.mac .titlebar.compact { padding-left: 78px; }
+
+/* Custom per-site icon preview (edit dialog) */
+.custom-icon-preview {
+  width: 36px; height: 36px; border-radius: 9px; border: 1px dashed var(--border);
+  display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; background: var(--surface);
+}
+.custom-icon-preview.has { border-style: solid; }
+.custom-icon-preview img { width: 100%; height: 100%; object-fit: contain; }
+
 /* ===========================================================================
    Sidebar
    =========================================================================== */
