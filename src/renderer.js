@@ -1435,6 +1435,16 @@ function showSidebarMenu(x, y) {
   const menu = document.createElement('div');
   menu.className = 'ctx-menu';
   menu.id = 'ctxMenu';
+
+  // Add site — the primary way in when the sidebar is locked (its + button is hidden).
+  const addItem = document.createElement('button');
+  addItem.className = 'ctx-item';
+  addItem.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  const addSpan = document.createElement('span'); addSpan.textContent = 'Add site…';
+  addItem.appendChild(addSpan);
+  addItem.addEventListener('click', () => { hideLinkMenu(); openSiteModal(null); });
+  menu.appendChild(addItem);
+
   const item = document.createElement('button');
   item.className = 'ctx-item' + (sb.compact ? ' primary' : '');
   item.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 6h16M4 12h9M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';

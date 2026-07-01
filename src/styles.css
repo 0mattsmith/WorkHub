@@ -61,7 +61,7 @@ body { display: flex; flex-direction: column; }
    =========================================================================== */
 .titlebar {
   height: 34px; flex-shrink: 0; display: flex; align-items: center;
-  background: var(--bg-elev); border-bottom: 1px solid var(--border);
+  background: var(--bg);            /* match the main window for a seamless look */
   -webkit-app-region: drag; user-select: none; position: relative; z-index: 30;
 }
 .titlebar-title { font-size: 12px; font-weight: 600; color: var(--text-dim); padding-left: 12px; letter-spacing: .2px; }
@@ -89,9 +89,11 @@ body.system-frame .titlebar { display: none; }
 .titlebar.compact .brand .brand-name { font-size: 13px; }
 .titlebar.compact .brand .brand-mark svg { width: 20px; height: 20px; }
 .titlebar.compact .navbar {
-  -webkit-app-region: no-drag; height: 34px; flex: 1 1 auto; max-width: 640px;
+  -webkit-app-region: no-drag; height: 34px; width: min(46vw, 620px);
   border-bottom: none; background: transparent; padding: 0 4px;
+  position: absolute; left: 50%; transform: translateX(-50%);   /* centred to the window */
 }
+.titlebar.compact .navbar .url-bar { flex: 1 1 auto; }
 .titlebar-spacer { flex: 1 1 auto; align-self: stretch; min-width: 24px; -webkit-app-region: drag; }
 body.mac .titlebar.compact { padding-left: 78px; }
 
@@ -583,7 +585,8 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after {
    =========================================================================== */
 
 /* Sidebar sections -------------------------------------------------------- */
-.sb-widgets { padding: 6px 8px 2px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; max-height: 38vh; overflow-y: auto; }
+.sb-widgets { margin-top: 12px; padding: 8px 8px 2px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; max-height: 38vh; overflow-y: auto; }
+.app.locked .add-btn { display: none; }   /* when locked, add via the sidebar right-click menu instead */
 .sb-wid-sec { display: flex; flex-direction: column; gap: 3px; }
 .sb-wid-head { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding: 0 4px; }
 .sb-wid-add { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
