@@ -819,7 +819,7 @@ async function saveSite() {
       const urlChanged = site.url !== url;
       site.name = name; site.url = url;
       const g = $('siteList').value; if (g) site.group = g; else delete site.group;
-      if (pendingCustomIcon) site.customIcon = pendingCustomIcon; else delete site.customIcon;
+      if (pendingCustomIcon) { site.customIcon = pendingCustomIcon; site.iconFrozen = true; } else delete site.customIcon;
       if (urlChanged) {
         meta(site.id).lastUrl = null;
         delete site.favicon;   // stale cached icon — let it re-fetch for the new URL
@@ -829,7 +829,7 @@ async function saveSite() {
   } else {
     const site = { id: uid(), name, url };
     const g = $('siteList').value; if (g) site.group = g;
-    if (pendingCustomIcon) site.customIcon = pendingCustomIcon;
+    if (pendingCustomIcon) { site.customIcon = pendingCustomIcon; site.iconFrozen = true; }
     state.sites.push(site);
     await persistSites();
     renderTabs(); updateEmptyState();
