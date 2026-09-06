@@ -190,6 +190,14 @@
     </div>
   </div>
 
+  <!-- Ctrl+K: quick switch to an app -->
+  <div class="modal-overlay" id="quickModal" hidden>
+    <div class="quick-palette" role="dialog" aria-modal="true" aria-label="Quick switch">
+      <input type="text" id="quickInput" placeholder="Jump to an app…  (try Docs, Sheets, Drive, Slack)" autocomplete="off" />
+      <div class="quick-list" id="quickList"></div>
+    </div>
+  </div>
+
   <!-- ===================== Settings modal ===================== -->
   <div class="modal-overlay" id="settingsModal" hidden>
     <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">

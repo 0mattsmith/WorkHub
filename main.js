@@ -1136,9 +1136,37 @@ ipcMain.handle('downloads:showInFolder', (_e, id) => { const d = downloads.get(i
 ipcMain.handle('downloads:remove', (_e, id) => { downloads.delete(id); return true; });
 ipcMain.handle('downloads:clearCompleted', () => { for (const [id, d] of downloads) { if (d.state !== 'progressing') downloads.delete(id); } return true; });
 
+// Application menu — mainly to provide keyboard accelerators that work even
+// when an embedded <webview> has focus (a plain renderer key listener wouldn't).
+// Hidden on Windows (autoHideMenuBar); shown in the system bar on macOS.
+function buildAppMenu() {
+  const send = (action) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('shortcut', action); };
+  const isMac = process.platform === 'darwin';
+  const goItems = [
+    { label: 'Quick switch…', accelerator: 'CmdOrCtrl+K', click: () => send('quickswitch') }
+  ];
+  for (let i = 1; i <= 9; i++) goItems.push({ label: 'App ' + i, accelerator: 'CmdOrCtrl+' + i, click: () => send('tab:' + i) });
+  const template = [
+    { label: 'WorkHub', submenu: [
+      { label: 'Open page…', accelerator: 'CmdOrCtrl+O', click: () => send('openurl') },
+      { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => send('settings') },
+      { type: 'separator' },
+      isMac ? { role: 'hide' } : { role: 'minimize' },
+      { label: 'Quit WorkHub', accelerator: isMac ? 'Cmd+Q' : 'Ctrl+Q', click: () => { isQuitting = true; app.quit(); } }
+    ]},
+    { label: 'Edit', submenu: [
+      { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+      { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }
+    ]},
+    { label: 'Go', submenu: goItems }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.workhub.app');  // proper Windows toast identity
   loadPasswords();
+  buildAppMenu();
   try {
     if (process.defaultApp && process.argv.length >= 2) {
       app.setAsDefaultProtocolClient('workhub', process.execPath, [path.resolve(process.argv[1])]);

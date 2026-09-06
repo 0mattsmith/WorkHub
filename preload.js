@@ -115,6 +115,11 @@ contextBridge.exposeInMainWorld('workhub', {
   fetchIcon:        (url) => ipcRenderer.invoke('icon:fetch', url),
   openExternal:     (url) => ipcRenderer.invoke('app:openExternal', url),
   openUrlWindow:    (url) => ipcRenderer.invoke('app:openUrlWindow', url),
+  onShortcut:       (cb) => {
+    const handler = (_e, action) => cb(action);
+    ipcRenderer.on('shortcut', handler);
+    return () => ipcRenderer.removeListener('shortcut', handler);
+  },
   setWindowTitle:   (title) => ipcRenderer.invoke('window:setTitle', title),
   onOpenUrlIntent:  (cb) => {
     const handler = (_e, url) => cb(url);

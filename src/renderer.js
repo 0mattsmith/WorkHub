@@ -850,6 +850,95 @@ function submitUrlDialog() {
   closeUrlDialog();
 }
 
+/* ---- Quick switch (Ctrl+K) + Ctrl+1..9 ---- */
+const QS_ALIASES = [
+  { m: /docs\.google\./, a: ['docs', 'document', 'word', 'writer'] },
+  { m: /sheets\.google\./, a: ['sheets', 'spreadsheet', 'excel', 'calc'] },
+  { m: /slides\.google\./, a: ['slides', 'presentation', 'powerpoint', 'ppt'] },
+  { m: /drive\.google\./, a: ['drive', 'files', 'storage'] },
+  { m: /(mail\.google\.|gmail)/, a: ['gmail', 'mail', 'email', 'inbox'] },
+  { m: /calendar\.google\./, a: ['calendar', 'cal', 'schedule'] },
+  { m: /meet\.google\./, a: ['meet', 'video', 'call'] },
+  { m: /classroom\.google\./, a: ['classroom', 'class'] },
+  { m: /(outlook\.|office\.com|office365|microsoft365)/, a: ['outlook', 'office', 'mail', 'email', 'word', 'excel'] },
+  { m: /(onedrive|sharepoint)/, a: ['onedrive', 'drive', 'files'] },
+  { m: /slack\.com/, a: ['slack', 'chat', 'messages'] },
+  { m: /teams\.microsoft/, a: ['teams', 'chat', 'meetings'] },
+  { m: /zoom\.us/, a: ['zoom', 'video', 'call'] },
+  { m: /nextcloud/, a: ['nextcloud', 'files', 'office'] }
+];
+function siteAliases(site) {
+  const host = (hostOf(site.url) || '').toLowerCase();
+  const url = (site.url || '').toLowerCase();
+  const out = [String(site.name || '').toLowerCase()];
+  for (const e of QS_ALIASES) { if (e.m.test(host) || e.m.test(url)) for (const a of e.a) out.push(a); }
+  return out;
+}
+function qsScore(site, q) {
+  if (!q) return 1;
+  let best = 0;
+  for (const a of siteAliases(site)) {
+    if (a === q) best = Math.max(best, 4);
+    else if (a.startsWith(q)) best = Math.max(best, 3);
+    else if (a.includes(q)) best = Math.max(best, 1);
+  }
+  return best;
+}
+function flatSiteOrder() {
+  const out = [];
+  for (const grp of listOrder()) for (const s of sitesInGroup(grp.group)) out.push(s);
+  return out;
+}
+let qsSel = 0, qsResults = [];
+function openQuickSwitch() {
+  const m = $('quickModal'); if (!m) return;
+  $('quickInput').value = '';
+  renderQuickResults('');
+  m.hidden = false;
+  setTimeout(() => $('quickInput').focus(), 30);
+}
+function closeQuickSwitch() { const m = $('quickModal'); if (m) m.hidden = true; }
+function renderQuickResults(q) {
+  q = (q || '').trim().toLowerCase();
+  qsResults = flatSiteOrder().map((s) => ({ s, score: qsScore(s, q) })).filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score).map((x) => x.s).slice(0, 12);
+  qsSel = 0;
+  const box = $('quickList'); if (!box) return;
+  box.innerHTML = '';
+  if (!qsResults.length) { box.innerHTML = '<div class="notif-empty">No matching apps.</div>'; return; }
+  qsResults.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'qs-item' + (i === qsSel ? ' active' : '');
+    const ic = document.createElement('span'); ic.className = 'qs-ic'; paintIcon(ic, s);
+    const nm = document.createElement('span'); nm.className = 'qs-name'; nm.textContent = s.name;
+    row.appendChild(ic); row.appendChild(nm);
+    row.addEventListener('click', () => { activateSite(s.id); closeQuickSwitch(); });
+    row.addEventListener('mousemove', () => setQsSel(i));
+    box.appendChild(row);
+  });
+}
+function setQsSel(i) {
+  qsSel = Math.max(0, Math.min(qsResults.length - 1, i));
+  document.querySelectorAll('#quickList .qs-item').forEach((el, idx) => el.classList.toggle('active', idx === qsSel));
+}
+function quickSwitchKey(e) {
+  if (e.key === 'ArrowDown') { e.preventDefault(); setQsSel(qsSel + 1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); setQsSel(qsSel - 1); }
+  else if (e.key === 'Enter') { e.preventDefault(); const s = qsResults[qsSel]; if (s) { activateSite(s.id); closeQuickSwitch(); } }
+  else if (e.key === 'Escape') { closeQuickSwitch(); }
+}
+function handleShortcut(action) {
+  if (action === 'quickswitch') openQuickSwitch();
+  else if (action === 'openurl') openUrlDialog();
+  else if (action === 'settings') openSettings();
+  else if (action && action.indexOf('tab:') === 0) {
+    const n = parseInt(action.slice(4), 10);
+    const order = flatSiteOrder();
+    const target = n === 9 ? order[order.length - 1] : order[n - 1];
+    if (target) activateSite(target.id);
+  }
+}
+
 async function saveSite() {
   const name = $('siteName').value.trim();
   const url = normalizeUrl($('siteUrl').value);
@@ -1106,8 +1195,17 @@ function wireEvents() {
   $('openUrlCancel').addEventListener('click', closeUrlDialog);
   $('openUrlInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitUrlDialog(); else if (e.key === 'Escape') closeUrlDialog(); });
   $('openUrlModal').addEventListener('click', (e) => { if (e.target.id === 'openUrlModal') closeUrlDialog(); });
+
+  // Quick switch (Ctrl/Cmd+K) + Ctrl+1..9 come via main-process menu accelerators
+  api.onShortcut(handleShortcut);
+  $('quickInput').addEventListener('input', () => renderQuickResults($('quickInput').value));
+  $('quickInput').addEventListener('keydown', quickSwitchKey);
+  $('quickModal').addEventListener('click', (e) => { if (e.target.id === 'quickModal') closeQuickSwitch(); });
+  // Fallback key handling for when the host UI (not a webview) has focus
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); openUrlDialog(); }
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if (!e.shiftKey && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); openUrlDialog(); }
+    else if (!e.shiftKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); openQuickSwitch(); }
   });
   $('deleteSiteBtn').addEventListener('click', deleteSite);
   $('customIconFile').addEventListener('change', (e) => { loadCustomIconFile(e.target.files && e.target.files[0]); e.target.value = ''; });
