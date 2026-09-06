@@ -48,6 +48,20 @@ contextBridge.exposeInMainWorld('workhub', {
   exportWorkspace:  () => ipcRenderer.invoke('workspace:export'),
   importWorkspace:  () => ipcRenderer.invoke('workspace:import'),
 
+  // ---- downloads ----
+  downloadsList:        () => ipcRenderer.invoke('downloads:list'),
+  downloadCancel:       (id) => ipcRenderer.invoke('downloads:cancel', id),
+  downloadPauseResume:  (id) => ipcRenderer.invoke('downloads:pauseResume', id),
+  downloadOpen:         (id) => ipcRenderer.invoke('downloads:open', id),
+  downloadShowInFolder: (id) => ipcRenderer.invoke('downloads:showInFolder', id),
+  downloadRemove:       (id) => ipcRenderer.invoke('downloads:remove', id),
+  downloadsClear:       () => ipcRenderer.invoke('downloads:clearCompleted'),
+  onDownloadEvent:      (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('downloads:event', handler);
+    return () => ipcRenderer.removeListener('downloads:event', handler);
+  },
+
   // ---- updates ----
   getUpdateInfo:    () => ipcRenderer.invoke('updates:info'),
   checkForUpdates:  () => ipcRenderer.invoke('updates:check'),
@@ -100,6 +114,7 @@ contextBridge.exposeInMainWorld('workhub', {
   // ---- misc ----
   fetchIcon:        (url) => ipcRenderer.invoke('icon:fetch', url),
   openExternal:     (url) => ipcRenderer.invoke('app:openExternal', url),
+  openUrlWindow:    (url) => ipcRenderer.invoke('app:openUrlWindow', url),
   setWindowTitle:   (title) => ipcRenderer.invoke('window:setTitle', title),
   onOpenUrlIntent:  (cb) => {
     const handler = (_e, url) => cb(url);

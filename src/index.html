@@ -69,6 +69,11 @@
           <span>Notifications</span>
           <span class="notif-badge" id="notifBadge" hidden>0</span>
         </button>
+        <button class="ghost-btn" id="downloadsBtn" title="Downloads">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 4v10m0 0l4-4m-4 4l-4-4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 19h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <span>Downloads</span>
+          <span class="notif-badge" id="downloadsBadge" hidden>0</span>
+        </button>
         <button class="ghost-btn" id="smoothwallBtn" title="Sign in to Smoothwall">
           <span class="sw-dot" id="swDot" data-status="unknown"></span>
           <span>Smoothwall</span>
@@ -165,6 +170,22 @@
         <span class="spacer"></span>
         <button class="text-btn" id="cancelSiteBtn">Cancel</button>
         <button class="primary-btn" id="saveSiteBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ctrl+O: open a one-off web page (shares your signed-in session) -->
+  <div class="modal-overlay" id="openUrlModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="openUrlTitle">
+      <h2 id="openUrlTitle">Open a web page</h2>
+      <label class="field">
+        <span>Address — opens in a window using your signed-in session, without adding it as a site.</span>
+        <input type="text" id="openUrlInput" placeholder="e.g. docs.google.com/document/d/…" autocomplete="off" />
+      </label>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="text-btn" id="openUrlCancel">Cancel</button>
+        <button class="primary-btn" id="openUrlGo">Open</button>
       </div>
     </div>
   </div>
@@ -487,6 +508,10 @@
         <label class="switch"><input type="checkbox" id="titlebarCompactToggle" /><span class="slider"></span></label>
       </div>
       <div class="setting-row">
+        <div class="setting-text"><strong>Ask where to save downloads</strong><span>Off: files save straight to your Downloads folder. On: pick a location for each file.</span></div>
+        <label class="switch"><input type="checkbox" id="downloadAskToggle" /><span class="slider"></span></label>
+      </div>
+      <div class="setting-row">
         <div class="setting-text"><strong>Reset all sites</strong><span>Removes every pinned site and returns to the empty state.</span></div>
         <button class="text-btn danger" id="resetSitesBtn">Reset sites</button>
       </div>
@@ -515,6 +540,19 @@
       <button class="text-btn" id="notifMissed">What have I missed?</button>
       <span class="spacer"></span>
       <button class="text-btn" id="notifClear">Clear all</button>
+    </div>
+  </div>
+
+  <!-- Downloads popover -->
+  <div class="notif-panel" id="downloadsPanel" hidden>
+    <div class="notif-head">
+      <span class="notif-head-title">Downloads</span>
+      <button class="notif-close" id="downloadsClose" title="Close" aria-label="Close"></button>
+    </div>
+    <div class="notif-list" id="downloadsList"></div>
+    <div class="notif-foot">
+      <span class="spacer"></span>
+      <button class="text-btn" id="downloadsClearBtn">Clear finished</button>
     </div>
   </div>
 

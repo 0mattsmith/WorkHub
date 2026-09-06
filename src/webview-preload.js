@@ -84,6 +84,9 @@ window.addEventListener('contextmenu', (e) => {
     try { selection = String(window.getSelection ? window.getSelection().toString() : ''); } catch (_) {}
     e.preventDefault();
     ipcRenderer.sendToHost('workhub-context-menu', {
+      // Screen coordinates so the menu lands at the cursor even when the click
+      // is inside an iframe (e.g. Gmail), where clientX/Y are frame-relative.
+      sx: e.screenX, sy: e.screenY,
       x: e.clientX, y: e.clientY,
       href,
       text: anchor ? (anchor.textContent || anchor.getAttribute('aria-label') || '').trim().slice(0, 80) : '',

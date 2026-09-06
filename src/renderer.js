@@ -835,6 +835,21 @@ function openSiteModal(site) {
 
 function closeSiteModal() { $('siteModal').hidden = true; editingId = null; }
 
+/* ---- Ctrl+O: open a one-off web page (shares the signed-in session) ---- */
+function openUrlDialog() {
+  const m = $('openUrlModal'); if (!m) return;
+  $('openUrlInput').value = '';
+  m.hidden = false;
+  setTimeout(() => $('openUrlInput').focus(), 30);
+}
+function closeUrlDialog() { const m = $('openUrlModal'); if (m) m.hidden = true; }
+function submitUrlDialog() {
+  const url = normalizeUrl($('openUrlInput').value);
+  if (!url) return;
+  api.openUrlWindow(url);
+  closeUrlDialog();
+}
+
 async function saveSite() {
   const name = $('siteName').value.trim();
   const url = normalizeUrl($('siteUrl').value);
@@ -939,6 +954,7 @@ function openSettings() {
   const pw = s.passwords || {};
   $('pwEnabledToggle').checked = pw.enabled !== false;
   $('pwAutofillToggle').checked = pw.autofill !== false;
+  $('downloadAskToggle').checked = !!(s.downloads && s.downloads.askLocation);
   renderSavedLogins();
   setSettingsPane(currentSettingsPane);
   $('settingsModal').hidden = false;
@@ -983,6 +999,7 @@ async function saveSettings() {
       enabled: $('pwEnabledToggle').checked,
       autofill: $('pwAutofillToggle').checked
     },
+    downloads: { askLocation: $('downloadAskToggle').checked },
     updates: { autoCheck: $('autoUpdateToggle').checked, autoInstall: $('autoInstallToggle').checked },
     notifications: {
       os: $('osNotifyToggle').checked,
@@ -1083,6 +1100,15 @@ function wireEvents() {
   $('emptyAddBtn').addEventListener('click', () => openSiteModal(null));
   $('saveSiteBtn').addEventListener('click', saveSite);
   $('cancelSiteBtn').addEventListener('click', closeSiteModal);
+
+  // Ctrl/Cmd+O — open a one-off web page
+  $('openUrlGo').addEventListener('click', submitUrlDialog);
+  $('openUrlCancel').addEventListener('click', closeUrlDialog);
+  $('openUrlInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitUrlDialog(); else if (e.key === 'Escape') closeUrlDialog(); });
+  $('openUrlModal').addEventListener('click', (e) => { if (e.target.id === 'openUrlModal') closeUrlDialog(); });
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); openUrlDialog(); }
+  });
   $('deleteSiteBtn').addEventListener('click', deleteSite);
   $('customIconFile').addEventListener('change', (e) => { loadCustomIconFile(e.target.files && e.target.files[0]); e.target.value = ''; });
   $('customIconRemove').addEventListener('click', () => { pendingCustomIcon = null; renderCustomIconPreview(); });
@@ -1225,6 +1251,11 @@ function wireEvents() {
   $('notifBtn').addEventListener('click', toggleNotifications);
   $('notifClose').addEventListener('click', hideNotifPanel);
   $('notifClear').addEventListener('click', clearNotifications);
+
+  $('downloadsBtn').addEventListener('click', toggleDownloads);
+  $('downloadsClose').addEventListener('click', hideDownloadsPanel);
+  $('downloadsClearBtn').addEventListener('click', clearFinishedDownloads);
+  api.onDownloadEvent(handleDownloadEvent);
   $('notifMissed').addEventListener('click', () => { hideNotifPanel(); showMissed(); });
 
   $('whatsnewClose').addEventListener('click', () => { $('whatsnewModal').hidden = true; });
@@ -1259,6 +1290,7 @@ function wireEvents() {
   document.addEventListener('mousedown', (e) => {
     if (!e.target.closest || !e.target.closest('.ctx-menu')) hideLinkMenu();
     if (e.target.closest && !e.target.closest('#notifPanel') && !e.target.closest('#notifBtn')) hideNotifPanel();
+    if (e.target.closest && !e.target.closest('#downloadsPanel') && !e.target.closest('#downloadsBtn')) hideDownloadsPanel();
   }, true);
 
   api.onSmoothwallStatus(updateSmoothwallDot);
@@ -1486,9 +1518,17 @@ function ctxItem(label, svgInner, onClick) {
   el.addEventListener('click', () => { onClick(); hideLinkMenu(); });
   return el;
 }
-function positionCtxMenu(menu, wv, px, py) {
-  const rect = wv.getBoundingClientRect();
-  let x = rect.left + (px || 0), y = rect.top + (py || 0);
+function positionCtxMenu(menu, wv, payload) {
+  let x, y;
+  if (payload && typeof payload.sx === 'number') {
+    // Screen coords -> window/viewport coords (robust across iframes).
+    x = payload.sx - (window.screenX || 0);
+    y = payload.sy - (window.screenY || 0);
+  } else {
+    const rect = wv.getBoundingClientRect();
+    x = rect.left + ((payload && payload.x) || 0);
+    y = rect.top + ((payload && payload.y) || 0);
+  }
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
   if (x + mw > window.innerWidth - 8) x = window.innerWidth - mw - 8;
   if (y + mh > window.innerHeight - 8) y = window.innerHeight - mh - 8;
@@ -1533,7 +1573,7 @@ function showPageMenu(payload, wv) {
   }
 
   document.body.appendChild(menu);
-  positionCtxMenu(menu, wv, payload.x, payload.y);
+  positionCtxMenu(menu, wv, payload);
 }
 
 function showSidebarMenu(x, y) {
@@ -1763,16 +1803,25 @@ function applyCompactTitlebar() {
   if (on) {
     tb.classList.add('compact');
     if (title) title.style.display = 'none';
-    let spacer = $('titlebarSpacer');
-    if (!spacer) { spacer = document.createElement('div'); spacer.className = 'titlebar-spacer'; spacer.id = 'titlebarSpacer'; }
+    // Layout: brand | flex-spacer | navbar | flex-spacer | controls.
+    // Two equal flex spacers centre the navbar WITHOUT position:absolute or
+    // transform — both of which break Electron's -webkit-app-region hit-testing
+    // and were swallowing clicks on the nav buttons.
+    const mk = (id) => { let s = $(id); if (!s) { s = document.createElement('div'); s.className = 'titlebar-spacer'; s.id = id; } return s; };
+    const spL = mk('tbSpacerL'), spR = mk('tbSpacerR');
     if (brand.parentElement !== tb) tb.insertBefore(brand, controls || null);
-    if (spacer.parentElement !== tb) tb.insertBefore(spacer, controls || null);
-    if (navbar.parentElement !== tb) tb.insertBefore(navbar, spacer);       // brand, navbar, spacer, controls
+    if (spL.parentElement !== tb) tb.insertBefore(spL, controls || null);
+    if (navbar.parentElement !== tb) tb.insertBefore(navbar, controls || null);
+    if (spR.parentElement !== tb) tb.insertBefore(spR, controls || null);
+    // enforce order: brand, spL, navbar, spR, controls
+    tb.insertBefore(brand, spL);
+    tb.insertBefore(spL, navbar);
+    tb.insertBefore(navbar, spR);
+    if (controls) tb.insertBefore(spR, controls); else tb.appendChild(spR);
   } else {
     tb.classList.remove('compact');
     if (title) title.style.display = '';
-    const spacer = $('titlebarSpacer');
-    if (spacer) spacer.remove();
+    ['tbSpacerL', 'tbSpacerR', 'titlebarSpacer'].forEach((id) => { const s = $(id); if (s) s.remove(); });
     if (brand.parentElement === tb) sidebar.insertBefore(brand, sidebar.firstChild);
     if (navbar.parentElement === tb) content.insertBefore(navbar, content.firstChild);
   }
@@ -2133,6 +2182,115 @@ function clearNotifications() {
   recomputeUnread();
   persistNotifLog();
   renderNotifications();
+}
+
+/* ===========================================================================
+   Downloads
+   =========================================================================== */
+let downloadItems = [];   // newest first
+
+function fmtBytes(n) {
+  if (!n || n < 0) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(i ? 1 : 0) + ' ' + u[i];
+}
+function activeDownloadCount() { return downloadItems.filter((d) => d.state === 'progressing').length; }
+function updateDownloadsBadge() {
+  const b = $('downloadsBadge'); if (!b) return;
+  const n = activeDownloadCount();
+  b.textContent = n > 9 ? '9+' : String(n);
+  b.hidden = !n;
+}
+function isDownloadsOpen() { const p = document.getElementById('downloadsPanel'); return p && !p.hidden; }
+function hideDownloadsPanel() { const p = document.getElementById('downloadsPanel'); if (p) p.hidden = true; }
+
+function handleDownloadEvent(ev) {
+  if (!ev || !ev.payload) return;
+  const d = ev.payload;
+  const i = downloadItems.findIndex((x) => x.id === d.id);
+  if (i >= 0) downloadItems[i] = d; else downloadItems.unshift(d);
+  updateDownloadsBadge();
+  if (isDownloadsOpen()) renderDownloads();
+  if (ev.type === 'done' && d.state === 'completed') showToast('Downloaded ' + d.filename);
+  if (ev.type === 'done' && d.state === 'interrupted') showToast('Download failed: ' + d.filename);
+}
+
+function dlActBtn(label, onClick) {
+  const b = document.createElement('button');
+  b.className = 'dl-act-btn';
+  b.textContent = label;
+  b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+  return b;
+}
+function renderDownloads() {
+  const list = $('downloadsList'); if (!list) return;
+  list.innerHTML = '';
+  if (!downloadItems.length) { list.innerHTML = '<div class="notif-empty">No downloads yet.</div>'; return; }
+  for (const d of downloadItems) {
+    const row = document.createElement('div');
+    row.className = 'dl-item';
+    const name = document.createElement('div');
+    name.className = 'dl-name'; name.textContent = d.filename; name.title = d.savePath || d.filename;
+    row.appendChild(name);
+
+    if (d.state === 'progressing') {
+      const bar = document.createElement('div');
+      bar.className = 'dl-bar' + (d.totalBytes ? '' : ' indeterminate');
+      const fill = document.createElement('span');
+      fill.style.width = d.totalBytes ? Math.round((d.receivedBytes / d.totalBytes) * 100) + '%' : '40%';
+      bar.appendChild(fill); row.appendChild(bar);
+      const meta = document.createElement('div');
+      meta.className = 'dl-meta';
+      meta.textContent = (d.paused ? 'Paused · ' : '') + fmtBytes(d.receivedBytes) + (d.totalBytes ? ' / ' + fmtBytes(d.totalBytes) : '');
+      row.appendChild(meta);
+      const acts = document.createElement('div'); acts.className = 'dl-acts';
+      acts.appendChild(dlActBtn(d.paused ? 'Resume' : 'Pause', () => api.downloadPauseResume(d.id)));
+      acts.appendChild(dlActBtn('Cancel', () => api.downloadCancel(d.id)));
+      row.appendChild(acts);
+    } else {
+      const meta = document.createElement('div');
+      meta.className = 'dl-meta';
+      meta.textContent = d.state === 'completed' ? fmtBytes(d.receivedBytes) : (d.state === 'cancelled' ? 'Cancelled' : 'Failed');
+      row.appendChild(meta);
+      const acts = document.createElement('div'); acts.className = 'dl-acts';
+      if (d.state === 'completed') {
+        acts.appendChild(dlActBtn('Open', () => api.downloadOpen(d.id)));
+        acts.appendChild(dlActBtn('Show in folder', () => api.downloadShowInFolder(d.id)));
+      }
+      acts.appendChild(dlActBtn('Remove', () => { api.downloadRemove(d.id); downloadItems = downloadItems.filter((x) => x.id !== d.id); renderDownloads(); updateDownloadsBadge(); }));
+      row.appendChild(acts);
+    }
+    list.appendChild(row);
+  }
+}
+
+async function toggleDownloads() {
+  const p = document.getElementById('downloadsPanel');
+  if (!p) return;
+  if (!p.hidden) { p.hidden = true; return; }
+  hideNotifPanel();
+  p.classList.toggle('mac', /Mac/i.test(navigator.platform || navigator.userAgent || ''));
+  try { downloadItems = (await api.downloadsList()).reverse(); } catch (e) { downloadItems = []; }
+  renderDownloads();
+  p.hidden = false;
+  const btn = document.getElementById('downloadsBtn');
+  const r = btn ? btn.getBoundingClientRect() : { right: 60, left: 0, top: 80 };
+  const pw = p.offsetWidth, ph = p.offsetHeight;
+  let x = r.right + 8;
+  if (x + pw > window.innerWidth - 8) x = r.left - pw - 8;
+  if (x < 8) x = 8;
+  let y = r.top;
+  if (y + ph > window.innerHeight - 8) y = window.innerHeight - ph - 8;
+  if (y < 8) y = 8;
+  p.style.left = x + 'px';
+  p.style.top = y + 'px';
+}
+async function clearFinishedDownloads() {
+  try { await api.downloadsClear(); } catch (e) {}
+  downloadItems = downloadItems.filter((d) => d.state === 'progressing');
+  renderDownloads();
+  updateDownloadsBadge();
 }
 
 /* ===========================================================================

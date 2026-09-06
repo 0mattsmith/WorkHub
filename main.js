@@ -44,6 +44,7 @@ const DEFAULT_CONFIG = {
     useSystemFrame: false,               // true = OS native window frame; false = WorkHub's custom titlebar
     titlebarCompact: true,               // merge brand + nav/address bar into the titlebar row (default view)
     passwords: { enabled: true, autofill: true },   // remember + auto-fill site logins (encrypted)
+    downloads: { askLocation: false },              // false = auto-save to Downloads; true = ask each time
     showMissedOnLaunch: true,            // show the "What have I missed?" digest on launch
     lastSeenVersion: '',                 // last version whose "What's New" the user has seen
     updates: { autoCheck: true, autoInstall: true },   // autoInstall: download + restart to update with no wizard
@@ -1025,13 +1026,115 @@ ipcMain.handle('workspace:import', async () => {
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
+// Open an arbitrary web page (Ctrl+O, or an http(s) link routed to WorkHub as a
+// browser) in a lightweight window that shares the signed-in work session.
+const urlWindows = new Set();
+function openExternalUrlWindow(url) {
+  if (!url || !/^https?:\/\//i.test(url)) return;
+  const win = new BrowserWindow({
+    width: 1100, height: 800, title: 'WorkHub',
+    icon: ICONS.app,
+    backgroundColor: config.settings.theme === 'light' ? '#f8fafc' : '#0f172a',
+    autoHideMenuBar: true,
+    webPreferences: { partition: 'persist:workhub', contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  urlWindows.add(win);
+  win.on('closed', () => urlWindows.delete(win));
+  const ua = win.webContents.getUserAgent().replace(/ Electron\/[\d.]+/i, '');   // look like plain Chrome
+  win.webContents.setUserAgent(ua);
+  win.webContents.setWindowOpenHandler(({ url: u }) => { if (/^https?:\/\//i.test(u)) openExternalUrlWindow(u); return { action: 'deny' }; });
+  win.loadURL(url, { userAgent: ua });
+}
+function findHttpUrlArg(argv) {
+  return (argv || []).find((a) => typeof a === 'string' && /^https?:\/\//i.test(a));
+}
+ipcMain.handle('app:openUrlWindow', (_e, url) => { openExternalUrlWindow(url); return true; });
+
 app.on('second-instance', (event, argv) => {
-  const url = (argv || []).find((a) => typeof a === 'string' && a.indexOf('workhub://') === 0);
-  if (url) handleAppProtocol(url);
+  const proto = (argv || []).find((a) => typeof a === 'string' && a.indexOf('workhub://') === 0);
+  if (proto) handleAppProtocol(proto);
+  const httpUrl = findHttpUrlArg(argv);
+  if (httpUrl) openExternalUrlWindow(httpUrl);   // WorkHub opened as a browser for a link
   showMainWindow();
 });
 
-app.on('open-url', (event, url) => { event.preventDefault(); handleAppProtocol(url); });   // macOS
+app.on('open-url', (event, url) => {   // macOS
+  event.preventDefault();
+  if (url && url.indexOf('workhub://') === 0) handleAppProtocol(url);
+  else if (/^https?:\/\//i.test(url)) openExternalUrlWindow(url);
+});
+
+// ---------------------------------------------------------------------------
+// Download manager — captures downloads started from embedded sites, saves them
+// (to the system Downloads folder by default, or asks), and reports progress to
+// the renderer's downloads panel.
+// ---------------------------------------------------------------------------
+const downloads = new Map();   // id -> { id, item, filename, url, savePath, state, ... }
+let downloadSeq = 0;
+
+function serializeDownload(d) {
+  return {
+    id: d.id, filename: d.filename, url: d.url, savePath: d.savePath,
+    state: d.state, receivedBytes: d.receivedBytes, totalBytes: d.totalBytes,
+    paused: d.paused, startedAt: d.startedAt
+  };
+}
+function sendDownloads(type, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('downloads:event', { type, payload });
+}
+function uniqueDownloadPath(dir, filename) {
+  const safe = (filename || 'download').replace(/[\\/:*?"<>|]/g, '_');
+  let p = path.join(dir, safe);
+  if (!fs.existsSync(p)) return p;
+  const ext = path.extname(safe), base = path.basename(safe, ext);
+  let i = 1;
+  while (fs.existsSync(path.join(dir, `${base} (${i})${ext}`))) i++;
+  return path.join(dir, `${base} (${i})${ext}`);
+}
+
+function handleWillDownload(_event, item) {
+  const id = 'dl_' + (++downloadSeq) + '_' + Date.now().toString(36);
+  const filename = item.getFilename();
+  const ask = !!(config.settings.downloads && config.settings.downloads.askLocation);
+  if (!ask) {
+    try { item.setSavePath(uniqueDownloadPath(app.getPath('downloads'), filename)); }
+    catch (e) { /* leave unset -> Electron shows a save dialog */ }
+  }
+  const rec = {
+    id, item, filename, url: item.getURL(), savePath: item.getSavePath() || '',
+    state: 'progressing', receivedBytes: 0, totalBytes: item.getTotalBytes() || 0,
+    paused: false, startedAt: Date.now()
+  };
+  downloads.set(id, rec);
+  sendDownloads('start', serializeDownload(rec));
+
+  item.on('updated', (_e, state) => {
+    rec.receivedBytes = item.getReceivedBytes();
+    rec.totalBytes = item.getTotalBytes() || rec.totalBytes;
+    rec.savePath = item.getSavePath() || rec.savePath;
+    rec.paused = item.isPaused();
+    rec.state = state === 'interrupted' ? 'interrupted' : 'progressing';
+    sendDownloads('update', serializeDownload(rec));
+  });
+  item.on('done', (_e, state) => {
+    rec.state = state;   // 'completed' | 'cancelled' | 'interrupted'
+    rec.savePath = item.getSavePath() || rec.savePath;
+    rec.receivedBytes = item.getReceivedBytes();
+    sendDownloads('done', serializeDownload(rec));
+  });
+}
+
+ipcMain.handle('downloads:list', () => Array.from(downloads.values()).map(serializeDownload));
+ipcMain.handle('downloads:cancel', (_e, id) => { const d = downloads.get(id); if (d && d.item) { try { d.item.cancel(); } catch (e) {} } return true; });
+ipcMain.handle('downloads:pauseResume', (_e, id) => {
+  const d = downloads.get(id); if (!d || !d.item) return false;
+  try { if (d.item.isPaused()) d.item.resume(); else d.item.pause(); } catch (e) {}
+  return true;
+});
+ipcMain.handle('downloads:open', (_e, id) => { const d = downloads.get(id); if (d && d.savePath) shell.openPath(d.savePath); return true; });
+ipcMain.handle('downloads:showInFolder', (_e, id) => { const d = downloads.get(id); if (d && d.savePath) shell.showItemInFolder(d.savePath); return true; });
+ipcMain.handle('downloads:remove', (_e, id) => { downloads.delete(id); return true; });
+ipcMain.handle('downloads:clearCompleted', () => { for (const [id, d] of downloads) { if (d.state !== 'progressing') downloads.delete(id); } return true; });
 
 app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.workhub.app');  // proper Windows toast identity
@@ -1042,12 +1145,19 @@ app.whenReady().then(() => {
     } else {
       app.setAsDefaultProtocolClient('workhub');
     }
+    if (!process.defaultApp) {   // only for the packaged app — lets Windows/macOS offer WorkHub for web links
+      app.setAsDefaultProtocolClient('http');
+      app.setAsDefaultProtocolClient('https');
+    }
   } catch (e) { /* ignore */ }
   const launchUrl = process.argv.find((a) => typeof a === 'string' && a.indexOf('workhub://') === 0);
   if (launchUrl) setTimeout(() => handleAppProtocol(launchUrl), 1500);
-  session.fromPartition('persist:workhub');
+  const httpArg = findHttpUrlArg(process.argv);   // launched by clicking a web link
+  if (httpArg) setTimeout(() => openExternalUrlWindow(httpArg), 1200);
+  const wvSession = session.fromPartition('persist:workhub');
+  wvSession.on('will-download', handleWillDownload);   // capture downloads from embedded sites
   // Periodically flush cookies to disk so an unclean exit doesn't drop logins.
-  setInterval(() => { try { session.fromPartition('persist:workhub').cookies.flushStore(); } catch (e) {} }, 5 * 60 * 1000);
+  setInterval(() => { try { wvSession.cookies.flushStore(); } catch (e) {} }, 5 * 60 * 1000);
 
   createMainWindow();
   createTray();
