@@ -93,6 +93,8 @@ body.system-frame .titlebar { display: none; }
   border-bottom: none; background: transparent; padding: 0 4px;
   position: absolute; left: 50%; transform: translateX(-50%);   /* centred to the window */
 }
+/* every interactive control in the bar must be clickable, not draggable */
+.titlebar.compact .navbar *, .titlebar.compact .brand button { -webkit-app-region: no-drag; }
 .titlebar.compact .navbar .url-bar { flex: 1 1 auto; }
 .titlebar-spacer { flex: 1 1 auto; align-self: stretch; min-width: 24px; -webkit-app-region: drag; }
 body.mac .titlebar.compact { padding-left: 78px; }
@@ -356,6 +358,19 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after {
 .ctx-item.primary { color: var(--text); }
 .ctx-item.primary:hover { background: var(--accent-soft); color: var(--accent); }
 .ctx-item svg { flex-shrink: 0; }
+.ctx-item:disabled { opacity: .4; cursor: default; }
+.ctx-item:disabled:hover { background: transparent; color: var(--text-dim); }
+
+/* Icon rows (back/forward, cut/copy/paste) in the page context menu */
+.ctx-row { display: flex; gap: 2px; padding: 1px; }
+.ctx-icon-btn {
+  flex: 1; height: 34px; border: none; background: transparent; color: var(--text-dim);
+  border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.ctx-icon-btn:hover { background: var(--surface); color: var(--text); }
+.ctx-icon-btn:disabled { opacity: .35; cursor: default; }
+.ctx-icon-btn:disabled:hover { background: transparent; color: var(--text-dim); }
+.ctx-sep { height: 1px; background: var(--border); margin: 4px 6px; }
 
 /* Toast (e.g. "Added … to Links") */
 .toast {

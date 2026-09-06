@@ -155,6 +155,7 @@ let config = loadConfig();
 // ---------------------------------------------------------------------------
 let mainWindow = null;
 let tray = null;
+let pendingActivateSiteId = null;      // site to open after a notification click (survives a cold start)
 let smoothwallWindow = null;
 let smoothwallStatus = 'offnet';       // 'offnet' | 'ok' | 'bad' | 'unknown'
 let statusTimer = null;
@@ -954,15 +955,20 @@ ipcMain.handle('notify:os', (_e, payload) => {
       silent: false
     });
     n.on('click', () => {
+      const siteId = payload && payload.siteId;
+      pendingActivateSiteId = siteId || pendingActivateSiteId;   // consumed by the renderer on boot (cold start)
       showMainWindow();
-      if (mainWindow && !mainWindow.isDestroyed() && payload && payload.siteId) {
-        mainWindow.webContents.send('activate-site', payload.siteId);
+      if (siteId && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('activate-site', siteId);                 // window already open
+        setTimeout(() => { try { mainWindow.webContents.send('activate-site', siteId); } catch (e) {} }, 500); // covers a just-restored window
       }
     });
     n.show();
     return true;
   } catch (e) { return false; }
 });
+
+ipcMain.handle('app:pendingActivate', () => { const id = pendingActivateSiteId; pendingActivateSiteId = null; return id; });
 
 ipcMain.handle('workspace:export', async () => {
   const { canceled, filePath } = await dialog.showSaveDialog({

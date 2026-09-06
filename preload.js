@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld('workhub', {
 
   // ---- desktop notifications ----
   notifyOs:         (payload) => ipcRenderer.invoke('notify:os', payload),
+  pendingActivate:  () => ipcRenderer.invoke('app:pendingActivate'),
   getSnooze:        () => ipcRenderer.invoke('notify:getSnooze'),
   setSnooze:        (payload) => ipcRenderer.invoke('notify:setSnooze', payload),
   onSnooze:         (cb) => {

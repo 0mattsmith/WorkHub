@@ -48,22 +48,50 @@ try {
   s.remove();
 } catch (e) {}
 
-// Alt + right-click on a hyperlink -> tell the host to show our menu.
+// Right-click -> WorkHub's own context menu (back/forward, cut/copy/paste,
+// reload, link actions). We deliberately step aside for web apps that provide
+// their own right-click menu: if the page cancels the event (Google Docs,
+// Slack, etc. call preventDefault) or its host is a known rich-menu app, we do
+// nothing and let their menu show. Runs in the bubble phase so the page's own
+// handlers get first say.
+const RICH_MENU_HOSTS = [
+  'docs.google.com', 'drive.google.com', 'sheets.google.com', 'slides.google.com',
+  'script.google.com', 'sites.google.com', 'office.com', 'officeapps.live.com',
+  'sharepoint.com', 'onedrive.live.com', 'app.slack.com'
+];
+function siteHasOwnMenu() {
+  try {
+    const h = (location.hostname || '').toLowerCase();
+    return RICH_MENU_HOSTS.some((d) => h === d || h.endsWith('.' + d));
+  } catch (e) { return false; }
+}
+function isEditableTarget(t) {
+  try {
+    if (!t) return false;
+    if (t.isContentEditable) return true;
+    const tag = (t.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea';
+  } catch (e) { return false; }
+}
+
 window.addEventListener('contextmenu', (e) => {
-  if (!e.altKey) return;                              // only our gesture
-  const anchor = (e.target && e.target.closest) ? e.target.closest('a[href]') : null;
-  if (!anchor) return;                                // only over real links
-  const href = anchor.href;                           // resolved absolute URL
-  if (!/^https?:/i.test(href)) return;                // only web links
-  e.preventDefault();
-  e.stopPropagation();
-  ipcRenderer.sendToHost('workhub-link-menu', {
-    x: e.clientX,
-    y: e.clientY,
-    href,
-    text: (anchor.textContent || anchor.getAttribute('aria-label') || '').trim().slice(0, 80)
-  });
-}, true);
+  try {
+    if (e.defaultPrevented) return;      // the page is showing its own menu
+    if (siteHasOwnMenu()) return;        // known rich-menu web apps — leave them alone
+    const anchor = (e.target && e.target.closest) ? e.target.closest('a[href]') : null;
+    const href = anchor && /^https?:/i.test(anchor.href) ? anchor.href : '';
+    let selection = '';
+    try { selection = String(window.getSelection ? window.getSelection().toString() : ''); } catch (_) {}
+    e.preventDefault();
+    ipcRenderer.sendToHost('workhub-context-menu', {
+      x: e.clientX, y: e.clientY,
+      href,
+      text: anchor ? (anchor.textContent || anchor.getAttribute('aria-label') || '').trim().slice(0, 80) : '',
+      editable: isEditableTarget(e.target),
+      selection: selection
+    });
+  } catch (_) {}
+}, false);
 
 // Clicking normally anywhere in the page closes any open WorkHub menu.
 window.addEventListener('mousedown', (e) => {

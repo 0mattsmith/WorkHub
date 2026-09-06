@@ -406,6 +406,7 @@ function ensureWebview(site) {
   // Messages bubbled up from the per-site preload (Alt+right-click gesture).
   wv.addEventListener('ipc-message', (e) => {
     if (e.channel === 'workhub-link-menu') showLinkMenu(e.args[0], wv);
+    else if (e.channel === 'workhub-context-menu') showPageMenu(e.args[0], wv);
     else if (e.channel === 'workhub-dismiss-menu') hideLinkMenu();
     else if (e.channel === 'workhub-notification') addNotification(site, e.args[0]);
     else if (e.channel === 'workhub-cred-captured') maybeOfferSavePassword(e.args[0]);
@@ -418,14 +419,41 @@ function ensureWebview(site) {
   return wv;
 }
 
+// Navigation helpers — use the modern navigationHistory API when present
+// (Electron 30+), fall back to the legacy webview methods otherwise.
+function wvCanBack(wv) {
+  try {
+    if (wv.navigationHistory && typeof wv.navigationHistory.canGoBack === 'function') return wv.navigationHistory.canGoBack();
+    if (typeof wv.canGoBack === 'function') return wv.canGoBack();
+  } catch (e) {}
+  return false;
+}
+function wvCanFwd(wv) {
+  try {
+    if (wv.navigationHistory && typeof wv.navigationHistory.canGoForward === 'function') return wv.navigationHistory.canGoForward();
+    if (typeof wv.canGoForward === 'function') return wv.canGoForward();
+  } catch (e) {}
+  return false;
+}
+function wvGoBack(wv) {
+  try {
+    if (wv.navigationHistory && typeof wv.navigationHistory.goBack === 'function') return wv.navigationHistory.goBack();
+    if (typeof wv.goBack === 'function') return wv.goBack();
+  } catch (e) {}
+}
+function wvGoFwd(wv) {
+  try {
+    if (wv.navigationHistory && typeof wv.navigationHistory.goForward === 'function') return wv.navigationHistory.goForward();
+    if (typeof wv.goForward === 'function') return wv.goForward();
+  } catch (e) {}
+}
+
 function syncNav() {
   const wv = webviews.get(state.activeId);
   if (!wv) return;
-  try {
-    $('backBtn').disabled = !wv.canGoBack();
-    $('fwdBtn').disabled = !wv.canGoForward();
-    urlText.textContent = wv.getURL();
-  } catch (e) { /* webview not ready */ }
+  try { $('backBtn').disabled = !wvCanBack(wv); } catch (e) { $('backBtn').disabled = false; }
+  try { $('fwdBtn').disabled = !wvCanFwd(wv); } catch (e) { $('fwdBtn').disabled = false; }
+  try { urlText.textContent = wv.getURL(); } catch (e) { /* not ready */ }
 }
 
 /* ===========================================================================
@@ -1209,8 +1237,8 @@ function wireEvents() {
   });
 
   // Navbar
-  $('backBtn').addEventListener('click', () => { const w = webviews.get(state.activeId); if (w && w.canGoBack()) w.goBack(); });
-  $('fwdBtn').addEventListener('click', () => { const w = webviews.get(state.activeId); if (w && w.canGoForward()) w.goForward(); });
+  $('backBtn').addEventListener('click', () => { const w = webviews.get(state.activeId); if (w) wvGoBack(w); });
+  $('fwdBtn').addEventListener('click', () => { const w = webviews.get(state.activeId); if (w) wvGoFwd(w); });
   $('reloadBtn').addEventListener('click', () => { const w = webviews.get(state.activeId); if (w) w.reload(); });
   $('homeBtn').addEventListener('click', () => {
     const site = state.sites.find((s) => s.id === state.activeId);
@@ -1426,6 +1454,86 @@ async function deleteCustomList(name) {
 function hideLinkMenu() {
   const m = document.getElementById('ctxMenu');
   if (m) m.remove();
+}
+
+/* ---- In-app right-click menu for embedded pages ---- */
+const CTX_ICONS = {
+  back: '<path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  fwd: '<path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  reload: '<path d="M20 11A8 8 0 1 0 18 16M20 5v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  cut: '<circle cx="6" cy="6" r="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="6" cy="18" r="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 7.5l12 9M8 16.5l12-9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  copy: '<rect x="9" y="9" width="10" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M6 15H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  paste: '<rect x="6" y="5" width="12" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="9" y="3" width="6" height="3.6" rx="1" fill="none" stroke="currentColor" stroke-width="1.7"/>',
+  selectAll: '<rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2"/>',
+  plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  ext: '<path d="M14 4h6v6M20 4l-9 9M19 14v5H5V5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+};
+
+function ctxIconBtn(title, svgInner, enabled, onClick) {
+  const b = document.createElement('button');
+  b.className = 'ctx-icon-btn';
+  b.title = title; b.setAttribute('aria-label', title);
+  b.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18">' + svgInner + '</svg>';
+  if (!enabled) b.disabled = true;
+  else b.addEventListener('click', () => { onClick(); hideLinkMenu(); });
+  return b;
+}
+function ctxItem(label, svgInner, onClick) {
+  const el = document.createElement('button');
+  el.className = 'ctx-item';
+  el.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16">' + svgInner + '</svg>';
+  const span = document.createElement('span'); span.textContent = label; el.appendChild(span);
+  el.addEventListener('click', () => { onClick(); hideLinkMenu(); });
+  return el;
+}
+function positionCtxMenu(menu, wv, px, py) {
+  const rect = wv.getBoundingClientRect();
+  let x = rect.left + (px || 0), y = rect.top + (py || 0);
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  if (x + mw > window.innerWidth - 8) x = window.innerWidth - mw - 8;
+  if (y + mh > window.innerHeight - 8) y = window.innerHeight - mh - 8;
+  menu.style.left = Math.max(8, x) + 'px';
+  menu.style.top = Math.max(8, y) + 'px';
+}
+
+function showPageMenu(payload, wv) {
+  hideLinkMenu();
+  if (!payload || !wv) return;
+  const canBack = wvCanBack(wv), canFwd = wvCanFwd(wv);
+  const editable = !!payload.editable;
+  const hasSel = !!(payload.selection && payload.selection.trim());
+  const href = payload.href || '';
+
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.id = 'ctxMenu';
+
+  const nav = document.createElement('div');
+  nav.className = 'ctx-row';
+  nav.appendChild(ctxIconBtn('Back', CTX_ICONS.back, canBack, () => wvGoBack(wv)));
+  nav.appendChild(ctxIconBtn('Forward', CTX_ICONS.fwd, canFwd, () => wvGoFwd(wv)));
+  nav.appendChild(ctxIconBtn('Reload', CTX_ICONS.reload, true, () => { try { wv.reload(); } catch (e) {} }));
+  menu.appendChild(nav);
+
+  const edit = document.createElement('div');
+  edit.className = 'ctx-row';
+  edit.appendChild(ctxIconBtn('Cut', CTX_ICONS.cut, editable && hasSel, () => { try { wv.cut(); } catch (e) {} }));
+  edit.appendChild(ctxIconBtn('Copy', CTX_ICONS.copy, hasSel, () => { try { wv.copy(); } catch (e) {} }));
+  edit.appendChild(ctxIconBtn('Paste', CTX_ICONS.paste, editable, () => { try { wv.paste(); } catch (e) {} }));
+  menu.appendChild(edit);
+
+  const sep = document.createElement('div'); sep.className = 'ctx-sep'; menu.appendChild(sep);
+  menu.appendChild(ctxItem('Select all', CTX_ICONS.selectAll, () => { try { wv.selectAll(); } catch (e) {} }));
+
+  if (href) {
+    const sep2 = document.createElement('div'); sep2.className = 'ctx-sep'; menu.appendChild(sep2);
+    menu.appendChild(ctxItem('Add to Links', CTX_ICONS.plus, () => addLinkToSidebar(href, payload.text || '')));
+    menu.appendChild(ctxItem('Copy link', CTX_ICONS.copy, () => { try { if (navigator.clipboard) navigator.clipboard.writeText(href); } catch (e) {} }));
+    menu.appendChild(ctxItem('Open in browser', CTX_ICONS.ext, () => api.openExternal(href)));
+  }
+
+  document.body.appendChild(menu);
+  positionCtxMenu(menu, wv, payload.x, payload.y);
 }
 
 function showSidebarMenu(x, y) {
@@ -2161,6 +2269,9 @@ async function boot() {
   updateSmoothwallDot(await api.getSmoothwallStatus());
 
   if (state.sites[0]) activateSite(state.sites[0].id);
+
+  // If launched via a notification click (cold start), jump straight to that app.
+  try { const pend = await api.pendingActivate(); if (pend) activateSite(pend); } catch (e) {}
 
   await maybeShowWhatsNew();   // after an update
   maybeShowMissed();           // launch digest
