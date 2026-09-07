@@ -18,6 +18,7 @@ const tabMeta = new Map();    // id -> { lastActive, asleep, lastUrl }
 let sleepTimer = null;
 let webviewPreloadUrl = null;   // fetched from main (sandbox-safe)
 let dragId = null;              // id of the tab currently being dragged
+let listDragGroup = null;       // group key of the list/section being dragged to reorder
 
 // Present embedded sites with a clean, current desktop-Chrome UA so apps like
 // Slack/Teams don't reject the browser (Slack refuses anything advertising
@@ -32,6 +33,7 @@ function sidebarLocked() {
 function clearDropMarks() {
   document.querySelectorAll('.drop-target').forEach((e) => e.classList.remove('drop-target'));
   document.querySelectorAll('.tab.drop-before, .tab.drop-after').forEach((e) => e.classList.remove('drop-before', 'drop-after'));
+  document.querySelectorAll('.section-header.list-drop-before, .section-header.list-drop-after').forEach((e) => e.classList.remove('list-drop-before', 'list-drop-after'));
 }
 
 function markGroupTarget(group) {
@@ -627,17 +629,51 @@ function sitesInGroup(group) {
   return state.sites.filter((s) => (s.group || '') === group);
 }
 
+// Display label for a group/list key (nameless lists have their own display name).
+function listLabel(group) {
+  if (group === '') return 'Your Apps';
+  if (group === OFFICE_GROUP) return 'Office Apps';
+  const meta = (state.settings.listMeta || {})[group];
+  if (meta && meta.name != null && meta.name !== '') return meta.name;
+  return group;   // legacy: the key is the name
+}
+function listHidden(group) {
+  const meta = (state.settings.listMeta || {})[group];
+  return !!(meta && meta.hideName);
+}
+
 function listOrder() {
   const present = new Set(state.sites.map((s) => s.group || ''));
   const customs = state.settings.customLists || [];
-  const out = [{ label: 'Your Apps', group: '' }];
-  if (present.has(OFFICE_GROUP)) out.push({ label: OFFICE_GROUP, group: OFFICE_GROUP });
-  for (const c of customs) if (c && c !== OFFICE_GROUP) out.push({ label: c, group: c });
+  // Default order first (Your Apps, Office, custom lists, any stragglers)…
+  const def = [{ label: listLabel(''), group: '' }];
+  if (present.has(OFFICE_GROUP)) def.push({ label: listLabel(OFFICE_GROUP), group: OFFICE_GROUP });
+  for (const c of customs) if (c && c !== OFFICE_GROUP) def.push({ label: listLabel(c), group: c });
   for (const g of present) {
     if (g === '' || g === OFFICE_GROUP) continue;
-    if (!customs.includes(g) && !out.find((o) => o.group === g)) out.push({ label: g, group: g });
+    if (!customs.includes(g) && !def.find((o) => o.group === g)) def.push({ label: listLabel(g), group: g });
   }
+  // …then apply the user's saved drag order on top.
+  const saved = state.settings.listOrder || [];
+  const byGroup = new Map(def.map((o) => [o.group, o]));
+  const out = [];
+  for (const g of saved) { if (byGroup.has(g)) { out.push(byGroup.get(g)); byGroup.delete(g); } }
+  for (const o of def) if (byGroup.has(o.group)) out.push(o);   // new/unsaved lists keep default position
   return out;
+}
+
+// Move one list before/after another and persist the new order.
+async function reorderList(dragGroup, targetGroup, after) {
+  if (dragGroup === targetGroup) return;
+  const order = listOrder().map((o) => o.group);   // current effective order
+  const from = order.indexOf(dragGroup);
+  if (from >= 0) order.splice(from, 1);
+  let to = order.indexOf(targetGroup);
+  if (to < 0) to = order.length; else if (after) to += 1;
+  order.splice(to, 0, dragGroup);
+  state.settings.listOrder = order;
+  renderTabs();
+  await api.setSettings({ listOrder: order });
 }
 
 async function toggleSection(name) {
@@ -653,20 +689,54 @@ function renderTabs() {
   const customs = state.settings.customLists || [];
   for (const sec of listOrder()) {
     const items = sitesInGroup(sec.group);
-    const isCustom = customs.includes(sec.label);
+    const isCustom = customs.includes(sec.group);
     if (sec.group === '' && items.length === 0) continue;
     if (sec.group !== '' && items.length === 0 && !isCustom) continue;
     const isCol = !!collapsed[sec.label];
+    const hideName = listHidden(sec.group);
     const header = document.createElement('button');
-    header.className = 'section-header collapsible' + (isCol ? ' collapsed' : '');
+    header.className = 'section-header collapsible' + (isCol ? ' collapsed' : '') + (hideName ? ' nameless' : '');
     header.innerHTML = '<svg class="chev" viewBox="0 0 24 24" width="12" height="12"><path d="M8 5l8 7-8 7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    const lab = document.createElement('span');
-    lab.textContent = sec.label;
-    header.appendChild(lab);
+    if (!hideName) {
+      const lab = document.createElement('span');
+      lab.textContent = sec.label;
+      header.appendChild(lab);
+    }
+    const grip = document.createElement('span');
+    grip.className = 'section-grip';
+    grip.title = 'Drag to reorder list';
+    grip.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>';
+    header.appendChild(grip);
     header.title = sec.label;
     header.addEventListener('click', () => toggleSection(sec.label));
     header.dataset.group = sec.group;
     attachGroupDrop(header, sec.group);
+
+    // Drag the whole header (grip is the visual cue) to reorder lists.
+    header.draggable = !sidebarLocked();
+    header.addEventListener('dragstart', (e) => {
+      if (sidebarLocked()) { e.preventDefault(); return; }
+      listDragGroup = sec.group;
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', 'list:' + sec.group); } catch (_) {}
+      header.classList.add('list-dragging');
+    });
+    header.addEventListener('dragend', () => { listDragGroup = null; clearDropMarks(); header.classList.remove('list-dragging'); });
+    header.addEventListener('dragover', (e) => {
+      if (listDragGroup == null || listDragGroup === sec.group) return;
+      e.preventDefault(); e.stopPropagation();
+      clearDropMarks();
+      const r = header.getBoundingClientRect();
+      header.classList.add(((e.clientY - r.top) > r.height / 2) ? 'list-drop-after' : 'list-drop-before');
+    });
+    header.addEventListener('drop', (e) => {
+      if (listDragGroup == null) return;
+      e.preventDefault(); e.stopPropagation();
+      const r = header.getBoundingClientRect();
+      const after = (e.clientY - r.top) > r.height / 2;
+      if (listDragGroup !== sec.group) reorderList(listDragGroup, sec.group, after);
+      clearDropMarks();
+    });
     tabList.appendChild(header);
     const wrap = document.createElement('div');
     wrap.className = 'section-items' + (isCol ? ' collapsed' : '');
@@ -919,7 +989,10 @@ function renderQuickResults(q) {
 }
 function setQsSel(i) {
   qsSel = Math.max(0, Math.min(qsResults.length - 1, i));
-  document.querySelectorAll('#quickList .qs-item').forEach((el, idx) => el.classList.toggle('active', idx === qsSel));
+  const items = document.querySelectorAll('#quickList .qs-item');
+  items.forEach((el, idx) => el.classList.toggle('active', idx === qsSel));
+  const active = items[qsSel];
+  if (active) active.scrollIntoView({ block: 'nearest' });   // keep the highlighted row visible
 }
 function quickSwitchKey(e) {
   if (e.key === 'ArrowDown') { e.preventDefault(); setQsSel(qsSel + 1); }
@@ -1480,8 +1553,8 @@ function populateListSelect(current) {
   if (!sel) return;
   const customs = state.settings.customLists || [];
   const opts = [{ v: '', l: 'Your Apps' }, { v: OFFICE_GROUP, l: OFFICE_GROUP }];
-  for (const c of customs) if (c !== OFFICE_GROUP) opts.push({ v: c, l: c });
-  if (current && !opts.find((o) => o.v === current)) opts.push({ v: current, l: current });
+  for (const c of customs) if (c !== OFFICE_GROUP) opts.push({ v: c, l: listHidden(c) ? '(No name)' : listLabel(c) });
+  if (current && !opts.find((o) => o.v === current)) opts.push({ v: current, l: listHidden(current) ? '(No name)' : listLabel(current) });
   sel.innerHTML = '';
   for (const o of opts) {
     const el = document.createElement('option');
@@ -1491,28 +1564,45 @@ function populateListSelect(current) {
   }
 }
 
+let listsSaveTimer = null;
+function saveLists(rerender) {
+  clearTimeout(listsSaveTimer);
+  listsSaveTimer = setTimeout(() => {
+    api.setSettings({ customLists: state.settings.customLists, listMeta: state.settings.listMeta });
+    if (rerender) renderTabs();
+  }, 350);
+}
+
 function renderListsManager() {
   const wrap = $('listsManager');
   if (!wrap) return;
   const customs = state.settings.customLists || [];
+  if (!state.settings.listMeta) state.settings.listMeta = {};
   wrap.innerHTML = '';
   if (!customs.length) {
-    const p = document.createElement('div');
-    p.className = 'lists-empty';
-    p.textContent = 'No custom lists yet.';
-    wrap.appendChild(p);
+    wrap.innerHTML = '<div class="lists-empty">No custom lists yet. Leave the name blank when adding one to create a compact, nameless list.</div>';
+    return;
   }
-  for (const name of customs) {
+  for (const key of customs) {
+    const meta = state.settings.listMeta[key] || (state.settings.listMeta[key] = { name: key, hideName: false });
     const row = document.createElement('div');
     row.className = 'list-row';
-    const lab = document.createElement('span');
-    lab.className = 'list-name';
-    lab.textContent = name;
+    const nameInp = document.createElement('input');
+    nameInp.type = 'text'; nameInp.className = 'list-name-input';
+    nameInp.placeholder = 'List name (optional)';
+    nameInp.value = meta.name || '';
+    nameInp.addEventListener('input', () => { meta.name = nameInp.value.trim(); saveLists(true); });
+    const hideWrap = document.createElement('label');
+    hideWrap.className = 'list-hide';
+    const hide = document.createElement('input'); hide.type = 'checkbox'; hide.checked = !!meta.hideName;
+    hide.addEventListener('change', () => { meta.hideName = hide.checked; renderTabs(); saveLists(false); });
+    const hlab = document.createElement('span'); hlab.textContent = 'Hide';
+    hideWrap.appendChild(hide); hideWrap.appendChild(hlab);
     const del = document.createElement('button');
-    del.className = 'text-btn danger';
-    del.textContent = 'Delete';
-    del.addEventListener('click', () => deleteCustomList(name));
-    row.appendChild(lab);
+    del.className = 'text-btn danger'; del.textContent = 'Delete';
+    del.addEventListener('click', () => deleteCustomList(key));
+    row.appendChild(nameInp);
+    row.appendChild(hideWrap);
     row.appendChild(del);
     wrap.appendChild(row);
   }
@@ -1554,24 +1644,35 @@ function renderNotifyApps() {
 async function addCustomList() {
   const inp = $('newListName');
   const name = (inp.value || '').trim();
-  if (!name) return;
   if (!state.settings.customLists) state.settings.customLists = [];
-  if (name === OFFICE_GROUP || name === 'Your Apps' || state.settings.customLists.includes(name)) {
-    showToast('That list already exists');
-    return;
+  if (!state.settings.listMeta) state.settings.listMeta = {};
+  let key, hideName = false;
+  if (!name) {
+    key = 'list-' + Date.now().toString(36);        // nameless (compact) list — e.g. a pinned area
+    hideName = true;
+    state.settings.listMeta[key] = { name: '', hideName: true };
+  } else {
+    if (name === OFFICE_GROUP || name === 'Your Apps' || state.settings.customLists.includes(name)) {
+      showToast('That list already exists');
+      return;
+    }
+    key = name;
+    state.settings.listMeta[key] = { name: name, hideName: false };
   }
-  state.settings.customLists.push(name);
+  state.settings.customLists.push(key);
   inp.value = '';
-  await api.setSettings({ customLists: state.settings.customLists });
+  await api.setSettings({ customLists: state.settings.customLists, listMeta: state.settings.listMeta });
   renderListsManager();
   renderTabs();
-  showToast(`Created list “${name}”`);
+  showToast(hideName ? 'Created a nameless list' : `Created list “${name}”`);
 }
 
-async function deleteCustomList(name) {
-  state.settings.customLists = (state.settings.customLists || []).filter((c) => c !== name);
-  for (const s of state.sites) if (s.group === name) delete s.group;
-  await api.setSettings({ customLists: state.settings.customLists });
+async function deleteCustomList(key) {
+  state.settings.customLists = (state.settings.customLists || []).filter((c) => c !== key);
+  if (state.settings.listMeta) delete state.settings.listMeta[key];
+  if (Array.isArray(state.settings.listOrder)) state.settings.listOrder = state.settings.listOrder.filter((g) => g !== key);
+  for (const s of state.sites) if (s.group === key) delete s.group;
+  await api.setSettings({ customLists: state.settings.customLists, listMeta: state.settings.listMeta || {}, listOrder: state.settings.listOrder || [] });
   await persistSites();
   renderListsManager();
   renderTabs();
